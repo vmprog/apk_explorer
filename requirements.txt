@@ -1,0 +1,3 @@
+sudo apt install apktool
+sudo apt install mitmproxy
+

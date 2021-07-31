@@ -5,32 +5,28 @@ import os
 import subprocess
 import sys
 import getpass
-from pynput import keyboard
-
-package = ""
-user_app = ""
-proc_mitm = 0
 
 
 def open_apk(apk_file):
-    ret = 1
+    """Разархивирует APK-файл и достает
+    из него package name и версии сборки и SDK.
+    Возвращает имя пакета при успешном завершении
+    """
     write = 0
-    global package
-    Get_versions = 'aapt dump badging '+apk_file+' | grep "package: name="'
-    Get_package_name = 'aapt dump badging ' + \
+    package = ''
+    get_versions = 'aapt dump badging '+apk_file+' | grep "package: name="'
+    get_package_name = 'aapt dump badging ' + \
         apk_file+' | grep -o "package: name=\S*"'
     try:
-        ret_val = os.popen(Get_versions).read()
+        ret_val = os.popen(get_versions).read()
         print(ret_val)
-        package = os.popen(Get_package_name).read()
+        package = os.popen(get_package_name).read()
         package = package[package.index("'")+1:-2]
     except Exception:
         print('Aapt application error. '+package)
-        ret = 0
-    # Проверка на то, что папка не пустая. Вопрос. Перезаписать?
-    if os.path.exists('./'+package):
+    if os.path.exists('./'+package):  # Проверка существует ли папка.
         if len(os.listdir('./'+package+'/')) == 0:
-            write = 0  # Временно!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+            write = 1  # Папка пустая. Можно записывать.
         else:
             print('The folder is not empty. Overwrite it? Y(Yes),N(No).')
             answer = str(input())
@@ -48,40 +44,32 @@ def open_apk(apk_file):
             print(ret_val)
         except Exception:
             print('Apktool application error. '+ret_val)
-            ret = 0
-    return ret
+    return package
 
 
-def read_manifest():
-    # Проверка на то, что папка не пустая. Вопрос. Перезаписать?
-    # aapt dump badging base.apk | grep "package" #Вариант как можно получить название пакета
-    ret = 1
-    global package
-    #Get_compileSdkVersion = "grep -o 'compileSdkVersion=\S*' ./apk/AndroidManifest.xml"
-    #Get_package = "grep -o 'package\S*' ./apk/AndroidManifest.xml"
-    Get_debuggable = "grep -o 'debuggable=\S*' ./"+package+"/AndroidManifest.xml"
-    Get_uses_permission = "grep 'uses-permission' ./"+package+"/AndroidManifest.xml"
-
+def read_manifest(package):
+    """Читает AndroidManifest.xml и извлекает
+    из него метаданные.
+    """
+    # aapt dump badging base.apk | grep "package"
+    # Вариант как можно получить название пакета
+    # Get_compileSdkVersion = "grep -o 'compileSdkVersion=\S*' ./apk/AndroidManifest.xml"
+    # Get_package = "grep -o 'package\S*' ./apk/AndroidManifest.xml"
+    get_debuggable = "grep -o 'debuggable=\S*' ./"+package+"/AndroidManifest.xml"
+    get_uses_permission = "grep 'uses-permission' ./"+package+"/AndroidManifest.xml"
     try:
-        #package = os.popen(Get_package).read()
-        #package = package[package.index('"')+1:-2]
-        #print('App: '+package)
-
-        ret_val = os.popen(Get_debuggable).read()
+        ret_val = os.popen(get_debuggable).read()
         print(ret_val)
-
-        #ret_val = os.popen(Get_compileSdkVersion).read()
-        # print(ret_val)
-
-        ret_val = os.popen(Get_uses_permission).read()
+        ret_val = os.popen(get_uses_permission).read()
         print(ret_val)
     except Exception:
         print('Error reading the manifest. '+ret_val)
-        ret = 0
-    return ret
 
 
-def get_frameworks():
+def get_frameworks(package):
+    """Анализирует файлы APK и детектирует
+    используемые фреймворки.
+    """
     fw_list = []
 
     # Godot
@@ -216,75 +204,74 @@ def get_frameworks():
 
 
 def device_present():
-    ret = 1
+    """Проверяет подключено ли устройство или эмулятор
+    """
     Get_devices = "adb devices | grep device$"
     try:
         ret_val = os.popen(Get_devices).read()
-        if len(ret_val) < 1:
-            ret = 0
+        if len(ret_val) != 0:
+            return True
+        else:
+            return False
     except Exception:
-        ret = 0
-    return ret
+        print('Error checking connected devices!')
 
 
-def install_apk(apk_file):
-    ret = 1
-    global package
-    Get_install_status = 'adb shell pm list packages | grep '+package
-    Install_package = 'adb install '+apk_file
+def install_apk(apk_file, package):
+    """Проверяет устновлен ли переданны в параметрах APK
+    Если APK нет в списке установленных, то устанавливает.
+    """
+    get_install_status = 'adb shell pm list packages | grep '+package
+    install_package = 'adb install '+apk_file
     try:
-        ret_val = os.popen(Get_install_status).read()
+        ret_val = os.popen(get_install_status).read()
         if len(ret_val) != 0:
             print('The package '+package+' is already installed.')
         else:
             print('Installing the package: '+package+'.')
             try:
-                ret_val = os.popen(Install_package).read()
+                ret_val = os.popen(install_package).read()
                 print(ret_val)
             except Exception:
                 print('Package Installation error!')
-        ret = 0
     except Exception:
         print('Error when getting installed applications!')
-        ret = 0
-    return ret
 
 
-def run_apk():
-    ret = 1
-    global package
-    global user_app
+def run_apk(package):
+    """Запускает основную активность ислледуемого APK
+    """
     print('Starting: '+package)
     # aapt dump badging base.apk | grep "launchable-activity" #Так можно получить запускаемые активности
     # adb shell am start -n <package>/<activity> #Так можно запустить конкретную активность.
-    Start_apk_CMD = "adb shell monkey -p " + package + \
+    start_apk_cmd = "adb shell monkey -p " + package + \
         " -c android.intent.category.LAUNCHER 1"
-    Get_user_CMD = 'adb shell su -c "ps -A" | grep '+package+' | grep -o "^\S*"'
+    get_user_cmd = 'adb shell su -c "ps -A" | grep '+package+' | grep -o "^\S*"'
     try:
-        ret_val = os.popen(Start_apk_CMD).read()
+        ret_val = os.popen(start_apk_cmd).read()
         # print(ret_val)
         try:
-            user_app = os.popen(Get_user_CMD).read()
+            user_app = os.popen(get_user_cmd).read()
             user_app = user_app[:-1]
         except Exception:
             print('Error getting the application user name!')
-            ret = 0
     except Exception:
         print('APK launch error!')
-        ret = 0
-    return ret
 
 
 def set_iptables(net_interface):
+    """Настройка iptables на устройстве и на
+    компьютере с mitmproxy
+    """
     ret = 1
     # Запрос пароля для запуска iptable
     print("To configure the iptable, you must enter the password su:")
     p = getpass.getpass()
 
-    #Get_user_CMD = 'adb shell su -c "ps -A" | grep '+package+' | grep -o "^\S*"'
+    # Get_user_CMD = 'adb shell su -c "ps -A" | grep '+package+' | grep -o "^\S*"'
     # try:
-    #user_app = os.popen(Get_user_CMD).read()
-    #user_app = user_app[:-1]
+    # user_app = os.popen(Get_user_CMD).read()
+    # user_app = user_app[:-1]
     try:  # Настраиваем устройство
         ipt1_device = 'adb shell su -c "iptables -P OUTPUT DROP"'
         ret_val = os.popen(ipt1_device).read()
@@ -315,11 +302,13 @@ def set_iptables(net_interface):
 
 
 def start_mitm():
+    """Запуск proxydump в прозрачном режиме
+    """
     ret = 1
     try:
         mitm_cmd = 'mitmdump --mode transparent --showhost -w '+package+'.trf'
         print('Starting the mitm: '+mitm_cmd)
-        #ret_val = os.popen(mitm_cmd,'r')
+        # ret_val = os.popen(mitm_cmd,'r')
         global proc_mitm
         proc_mitm = subprocess.Popen(mitm_cmd, shell=True).communicate()
 
@@ -331,51 +320,35 @@ def start_mitm():
 
 
 def unset_ipt_app():
+    """Отключение правил iptables
+    """
     ret = 1
     try:
         ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT"'
         ret_val = os.popen(ipt2_device).read()
     except Exception:
-        print('Error applying the rules on the device!')
+        print('Error applying the rules on the device! '+ret_val)
         ret = 0
-
     try:
         Stop_app = 'adb shell am force-stop '+package
         ret_val = os.popen(Stop_app).read()
     except Exception:
-        print('Error stopping the application!')
+        print('Error stopping the application! '+ret_val)
         ret = 0
-
     return ret
 
 
-def on_press(key):
-    try:
-        print('alphanumeric key {0} pressed'.format(key.char))
-        proc_mitm.kill()
-    except AttributeError:
-        print('special key {0} pressed'.format(key))
-    # Stop listener
-    return False
-
-
-def keyboardListen():
-    with keyboard.Listener(on_press=on_press) as listener:
-        listener.join()
-
-
 if __name__ == '__main__':
+    package = ''
     if len(sys.argv) == 3:
         apk_file = sys.argv[1]
         net_interface = sys.argv[2]
-        ret = open_apk(apk_file)
-        if ret != 0:
-            #thread_ = threading.Thread(target=keyboardListen)
-            # thread_.start()
-            read_manifest()
-            get_frameworks()
-            if device_present() == 1:
-                install_apk(apk_file)
+        package = open_apk(apk_file)
+        if len(package) != 0:
+            read_manifest(package)
+            get_frameworks(package)
+            if device_present():
+                install_apk(apk_file, package)
                 run_apk()
                 set_iptables(net_interface)
                 start_mitm()
