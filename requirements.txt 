@@ -1,3 +1,0 @@
-sudo apt install apktool
-sudo apt install mitmproxy
-pip3 install pynput

@@ -1,0 +1,7 @@
+.spyproject/
+*.log
+build/
+backup/
+node_modules/
+.idea/
+my_notes.txt
