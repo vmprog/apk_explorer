@@ -5,15 +5,17 @@ import os
 import subprocess
 import sys
 import getpass
+import time
 
 
 def open_apk(apk_file):
     """Разархивирует APK-файл и достает
     из него package name и версии сборки и SDK.
-    Возвращает имя пакета при успешном завершении
+    Возвращает имя пакета и UID при успешном завершении
     """
     write = 0
     package = ''
+    uid = ''
     get_versions = 'aapt dump badging '+apk_file+' | grep "package: name="'
     get_package_name = 'aapt dump badging ' + \
         apk_file+' | grep -o "package: name=\S*"'
@@ -22,6 +24,13 @@ def open_apk(apk_file):
         print(ret_val)
         package = os.popen(get_package_name).read()
         package = package[package.index("'")+1:-2]
+        try:
+            get_uid = "adb shell dumpsys  package  " + package + " | grep -o 'userId=\S*'"
+            uid = os.popen(get_uid).read()
+            uid = uid[uid.index("=")+1:-1]
+            print('UID:='+uid)
+        except Exception:
+            print('Error when getting the uid. '+uid)
     except Exception:
         print('Aapt application error. '+package)
     if os.path.exists('./'+package):  # Проверка существует ли папка.
@@ -38,13 +47,13 @@ def open_apk(apk_file):
         write = 1  # Папки не существует. Записываем.
 
     if write == 1:
-        SpaceCMD = "apktool d -o ./"+package+" -f "+apk_file
+        space_cmd = "apktool d -o ./"+package+" -f "+apk_file
         try:
-            ret_val = os.popen(SpaceCMD).read()
+            ret_val = os.popen(space_cmd).read()
             print(ret_val)
         except Exception:
             print('Apktool application error. '+ret_val)
-    return package
+    return(package, uid)
 
 
 def read_manifest(package):
@@ -71,12 +80,13 @@ def get_frameworks(package):
     используемые фреймворки.
     """
     fw_list = []
+    print('Defining frameworks!')
 
     # Godot
     ret_framework = ""
-    test1_Godot = 'find ./'+package+'/ -name "libgodot_android.so"'
+    test1_godot = 'find ./'+package+'/ -name "libgodot_android.so"'
     try:
-        ret_val = os.popen(test1_Godot).read()
+        ret_val = os.popen(test1_godot).read()
         if len(ret_val) != 0:
             ret_framework = "Godot"
     except Exception:
@@ -86,17 +96,17 @@ def get_frameworks(package):
 
     # Unity_3D
     ret_framework = ""
-    test1_Unity_3D = 'find ./'+package+'/ -name "libunity.so"'
-    test2_Unity_3D = 'find ./'+package+'/ -name "libmono.so"'
-    test3_Unity_3D = 'find ./'+package+'/ -name "libil2cpp.so"'
+    test1_unity_3d = 'find ./'+package+'/ -name "libunity.so"'
+    test2_unity_3d = 'find ./'+package+'/ -name "libmono.so"'
+    test3_unity_3d = 'find ./'+package+'/ -name "libil2cpp.so"'
     try:
-        ret_val = os.popen(test1_Unity_3D).read()
+        ret_val = os.popen(test1_unity_3d).read()
         if len(ret_val) != 0:
             ret_framework = "Unity_3D"
-        ret_val = os.popen(test2_Unity_3D).read()
+        ret_val = os.popen(test2_unity_3d).read()
         if ret_framework == "" and len(ret_val) != 0:
             ret_framework = "Unity_3D"
-        ret_val = os.popen(test3_Unity_3D).read()
+        ret_val = os.popen(test3_unity_3d).read()
         if ret_framework == "" and len(ret_val) != 0:
             ret_framework = "Unity_3D"
     except Exception:
@@ -106,11 +116,11 @@ def get_frameworks(package):
 
     # Apache_Cordova
     ret_framework = ""
-    test1_Apache_Cordova = 'find ./'+package+'/ -name "cordova.js"'
-    test2_Apache_Cordova = 'find ./'+package+'/ -name "index.html"'
+    test1_apache_cordova = 'find ./'+package+'/ -name "cordova.js"'
+    test2_apache_cordova = 'find ./'+package+'/ -name "index.html"'
     try:
-        ret_val1 = os.popen(test1_Apache_Cordova).read()
-        ret_val2 = os.popen(test2_Apache_Cordova).read()
+        ret_val1 = os.popen(test1_apache_cordova).read()
+        ret_val2 = os.popen(test2_apache_cordova).read()
         if len(ret_val1) != 0 and len(ret_val2) != 0:
             ret_framework = "Apache_Cordova"
     except Exception:
@@ -120,17 +130,17 @@ def get_frameworks(package):
 
     # Ionic_Framework
     ret_framework = ""
-    test1_Ionic_Framework = 'grep -rn "<ion-side-menus>" ./'+package+'/'
-    test2_Ionic_Framework = 'grep -rn "<ion-nav-bar>" ./'+package+'/'
-    test3_Ionic_Framework = 'grep -rn "<ion-nav-buttons>" ./'+package+'/'
+    test1_ionic_framework = 'grep -rn "<ion-side-menus>" ./'+package+'/'
+    test2_ionic_framework = 'grep -rn "<ion-nav-bar>" ./'+package+'/'
+    test3_ionic_framework = 'grep -rn "<ion-nav-buttons>" ./'+package+'/'
     try:
-        ret_val = os.popen(test1_Ionic_Framework).read()
+        ret_val = os.popen(test1_ionic_framework).read()
         if len(ret_val) != 0:
             ret_framework = "Ionic_Framework"
-        ret_val = os.popen(test2_Ionic_Framework).read()
+        ret_val = os.popen(test2_ionic_framework).read()
         if ret_framework == "" and len(ret_val) != 0:
             ret_framework = "Ionic_Framework"
-        ret_val = os.popen(test3_Ionic_Framework).read()
+        ret_val = os.popen(test3_ionic_framework).read()
         if ret_framework == "" and len(ret_val) != 0:
             ret_framework = "Ionic_Framework"
     except Exception:
@@ -140,9 +150,9 @@ def get_frameworks(package):
 
     # Cocos2d
     ret_framework = ""
-    test1_Cocos2d = 'grep -rn "Cocos2dx" ./'+package+'/'
+    test1_cocos2d = 'grep -rn "Cocos2dx" ./'+package+'/'
     try:
-        ret_val = os.popen(test1_Cocos2d).read()
+        ret_val = os.popen(test1_cocos2d).read()
         if len(ret_val) != 0:
             ret_framework = "Cocos2d"
     except Exception:
@@ -152,14 +162,14 @@ def get_frameworks(package):
 
     # React Native (facebook) #https://stackoverflow.com/questions/44302269/how-do-i-detect-if-the-app-uses-react-native-given-apk-file
     ret_framework = ""
-    test1_React_Native = 'find ./'+package+'/ -type d -name "react"'
-    test2_React_Native = 'find ./'+package+'/ -name "libreactnativejni.so"'
+    test1_react_native = 'find ./'+package+'/ -type d -name "react"'
+    test2_react_native = 'find ./'+package+'/ -name "libreactnativejni.so"'
     try:
-        ret_val = os.popen(test1_React_Native).read()
+        ret_val = os.popen(test1_react_native).read()
         if len(ret_val) != 0:
             ret_framework = "React Native"
         else:
-            ret_val = os.popen(test2_React_Native).read()
+            ret_val = os.popen(test2_react_native).read()
             if len(ret_val) != 0:
                 ret_framework = "React Native"
     except Exception:
@@ -172,14 +182,14 @@ def get_frameworks(package):
     # libapp.so
     # Примеры на Flutter https://www.thedroidsonroids.com/blog/apps-made-with-flutter
     ret_framework = ""
-    test1_Flutter = 'find ./'+package+'/ -type d -name "flutter"'
-    test2_Flutter = 'find ./'+package+'/ -name "libflutter.so"'
+    test1_flutter = 'find ./'+package+'/ -type d -name "flutter"'
+    test2_flutter = 'find ./'+package+'/ -name "libflutter.so"'
     try:
-        ret_val = os.popen(test1_Flutter).read()
+        ret_val = os.popen(test1_flutter).read()
         if len(ret_val) != 0:
             ret_framework = "Flutter"
         else:
-            ret_val = os.popen(test2_Flutter).read()
+            ret_val = os.popen(test2_flutter).read()
             if len(ret_val) != 0:
                 ret_framework = "Flutter"
     except Exception:
@@ -206,9 +216,9 @@ def get_frameworks(package):
 def device_present():
     """Проверяет подключено ли устройство или эмулятор
     """
-    Get_devices = "adb devices | grep device$"
+    get_devices = "adb devices | grep device$"
     try:
-        ret_val = os.popen(Get_devices).read()
+        ret_val = os.popen(get_devices).read()
         if len(ret_val) != 0:
             return True
         else:
@@ -238,122 +248,130 @@ def install_apk(apk_file, package):
         print('Error when getting installed applications!')
 
 
-def run_apk(package):
-    """Запускает основную активность ислледуемого APK
-    """
-    print('Starting: '+package)
-    # aapt dump badging base.apk | grep "launchable-activity" #Так можно получить запускаемые активности
-    # adb shell am start -n <package>/<activity> #Так можно запустить конкретную активность.
-    start_apk_cmd = "adb shell monkey -p " + package + \
-        " -c android.intent.category.LAUNCHER 1"
-    get_user_cmd = 'adb shell su -c "ps -A" | grep '+package+' | grep -o "^\S*"'
-    try:
-        ret_val = os.popen(start_apk_cmd).read()
-        # print(ret_val)
-        try:
-            user_app = os.popen(get_user_cmd).read()
-            user_app = user_app[:-1]
-        except Exception:
-            print('Error getting the application user name!')
-    except Exception:
-        print('APK launch error!')
-
-
-def set_iptables(net_interface):
+def set_iptables(uid, su_pass):
     """Настройка iptables на устройстве и на
     компьютере с mitmproxy
     """
-    ret = 1
-    # Запрос пароля для запуска iptable
-    print("To configure the iptable, you must enter the password su:")
-    p = getpass.getpass()
-
-    # Get_user_CMD = 'adb shell su -c "ps -A" | grep '+package+' | grep -o "^\S*"'
-    # try:
-    # user_app = os.popen(Get_user_CMD).read()
-    # user_app = user_app[:-1]
     try:  # Настраиваем устройство
         ipt1_device = 'adb shell su -c "iptables -P OUTPUT DROP"'
-        ret_val = os.popen(ipt1_device).read()
-        ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT -m owner --uid-owner '+user_app+'"'
-        ret_val = os.popen(ipt2_device).read()
+        ret_vald = os.popen(ipt1_device).read()
+        ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT -m owner --uid-owner '+uid+'"'
+        ret_vald = os.popen(ipt2_device).read()
         try:  # Настраиваем host
-            ipt1_host = 'echo '+p+' | sudo -S iptables -t nat -F'
+            ipt1_host = 'echo '+su_pass+' | sudo -S iptables -t nat -F'
             ret_val = os.popen(ipt1_host).read()
-            ipt2_host = 'echo '+p+' | sudo -S sysctl -w net.ipv4.ip_forward=1'
+            ipt2_host = 'echo '+su_pass+' | sudo -S sysctl -w net.ipv4.ip_forward=1'
             ret_val = os.popen(ipt2_host).read()
-            ipt3_host = 'echo '+p+' | sudo sysctl -w net.ipv6.conf.all.forwarding=1'
+            ipt3_host = 'echo '+su_pass+' | sudo sysctl -w net.ipv6.conf.all.forwarding=1'
             ret_val = os.popen(ipt3_host).read()
-            ipt4_host = 'echo '+p+' | sudo sysctl -w net.ipv4.conf.all.send_redirects=0'
+            ipt4_host = 'echo '+su_pass+' | sudo sysctl -w net.ipv4.conf.all.send_redirects=0'
             ret_val = os.popen(ipt4_host).read()
-            ipt5_host = 'echo '+p+' | sudo iptables -t nat -A PREROUTING -i ' + \
-                net_interface+' -p tcp --dport 80 -j REDIRECT --to-port 8080 '
+            ipt5_host = 'echo '+su_pass + \
+                ' | sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080'
             ret_val = os.popen(ipt5_host).read()
-            ipt6_host = 'echo '+p+' | sudo iptables -t nat -A PREROUTING -i ' + \
-                net_interface+' -p tcp --dport 443 -j REDIRECT --to-port 8080 '
+            ipt6_host = 'echo '+su_pass + \
+                ' | sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 8080'
             ret_val = os.popen(ipt6_host).read()
+            # ipt7_host = 'echo '+su_pass + \
+            #    ' | sudo iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-port 8080'
+            # ret_val = os.popen(ipt7_host).read()
         except Exception:
-            print('Error applying the rules on the host!')
-            ret = 0
+            print('Error applying the rules on the host! '+ret_val)
     except Exception:
-        print('Error applying the rules on the device!')
-        ret = 0
-    return ret
+        print('Error applying the rules on the device! '+ret_vald)
 
 
 def start_mitm():
     """Запуск proxydump в прозрачном режиме
     """
-    ret = 1
     try:
         mitm_cmd = 'mitmdump --mode transparent --showhost -w '+package+'.trf'
         print('Starting the mitm: '+mitm_cmd)
-        # ret_val = os.popen(mitm_cmd,'r')
-        global proc_mitm
-        proc_mitm = subprocess.Popen(mitm_cmd, shell=True).communicate()
-
-    except KeyboardInterrupt:
-        print('Stopping the mitm!')
-        # proc_mitm.kill()
-        ret = 0
-    return ret
+        proc_mitm = subprocess.Popen(mitm_cmd, shell=True)
+    except Exception:
+        print('Error starting mitm! '+ret_val)
 
 
-def unset_ipt_app():
+def unset_ipt_app(su_pass):
     """Отключение правил iptables
     """
-    ret = 1
     try:
         ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT"'
         ret_val = os.popen(ipt2_device).read()
+        try:
+            ipt1_host = 'echo '+su_pass+' | sudo -S iptables -t nat -F'
+            ret_val = os.popen(ipt1_host).read()
+        except Exception:
+            print('Error applying the rules on the host! '+ret_val)
     except Exception:
         print('Error applying the rules on the device! '+ret_val)
-        ret = 0
+
+
+def run_apk(package, pause_sec):
+    """Запускает основную активность ислледуемого APK
+    """
+    print('Starting: '+package)
+    start_apk_cmd = "adb shell monkey -p " + package + \
+        " -c android.intent.category.LAUNCHER 1"
     try:
-        Stop_app = 'adb shell am force-stop '+package
-        ret_val = os.popen(Stop_app).read()
+        proc_apk = subprocess.Popen(start_apk_cmd, shell=True).communicate()
+        time.sleep(pause_sec)
+    except Exception:
+        print('APK launch error!')
+
+
+def stop_app(package):
+    """Завершение приложения APK.
+    """
+    print('Stopping the apk.')
+    try:
+        stop_app = 'adb shell am force-stop '+package
+        ret_val = os.popen(stop_app).read()
     except Exception:
         print('Error stopping the application! '+ret_val)
-        ret = 0
-    return ret
+
+
+def stop_mitm():
+    """Завершение приложения mitmdump.
+    """
+    print('Stopping the mitmdump.')
+    try:
+        get_pid = 'pgrep mitmdump'
+        pid = os.popen(get_pid).read()
+        try:
+            if len(pid) != 0:
+                stop_app = 'kill '+pid
+                ret_val = os.popen(stop_app).read()
+        except Exception:
+            print('Error stopping the mitmdump! '+ret_val)
+    except Exception:
+        print('The mitmdump pid was not found! '+ret_val)
 
 
 if __name__ == '__main__':
     package = ''
-    if len(sys.argv) == 3:
+    uid = ''
+    if len(sys.argv) >= 3:
         apk_file = sys.argv[1]
-        net_interface = sys.argv[2]
-        package = open_apk(apk_file)
+        su_pass = sys.argv[2]
+        pause_sec = 10
+        if len(sys.argv) == 4:  # Передан параметр ожидания после запуска приложения
+            pause_sec = int(sys.argv[3])
+        tdata = open_apk(apk_file)
+        package = tdata[0]
+        uid = tdata[1]
         if len(package) != 0:
             read_manifest(package)
-            get_frameworks(package)
+            # get_frameworks(package)
             if device_present():
                 install_apk(apk_file, package)
-                run_apk()
-                set_iptables(net_interface)
+                set_iptables(uid, su_pass)
                 start_mitm()
-                unset_ipt_app()
+                run_apk(package, pause_sec)
+                stop_app(package)
+                stop_mitm()
+                unset_ipt_app(su_pass)
             else:
                 print("No connected devices were detected!")
     else:
-        print("Usage: python apkexp some.apk netinterface")
+        print("Usage: python3 apkexp some.apk su_pass puse_sec")
