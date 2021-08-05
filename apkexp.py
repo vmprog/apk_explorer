@@ -4,13 +4,13 @@
 import os
 import subprocess
 import sys
-import getpass
 import time
+import xmltodict
 
 
 def open_apk(apk_file):
-    """Разархивирует APK-файл и достает
-    из него package name и версии сборки и SDK.
+    """Разархивирует APK-файл при помощи apktool
+    и достает из него package name и версии сборки и SDK.
     Возвращает имя пакета и UID при успешном завершении
     """
     write = 0
@@ -37,18 +37,20 @@ def open_apk(apk_file):
         if len(os.listdir('./'+package+'/')) == 0:
             write = 1  # Папка пустая. Можно записывать.
         else:
-            print('The folder is not empty. Overwrite it? Y(Yes),N(No).')
-            answer = str(input())
-            if answer == 'Y':
-                write = 1
-            elif answer == 'N':
-                write = 0
+            # print('The folder is not empty. Overwrite it? Y(Yes),N(No).')
+            # answer = str(input())
+            # if answer == 'Y':
+            #     write = 1
+            # elif answer == 'N':
+            #     write = 0
+            write = 0
     else:
         write = 1  # Папки не существует. Записываем.
 
     if write == 1:
         space_cmd = "apktool d -o ./"+package+" -f "+apk_file
         try:
+            print('Starting: '+space_cmd)
             ret_val = os.popen(space_cmd).read()
             print(ret_val)
         except Exception:
@@ -56,23 +58,73 @@ def open_apk(apk_file):
     return(package, uid)
 
 
-def read_manifest(package):
-    """Читает AndroidManifest.xml и извлекает
-    из него метаданные.
+def open_apk_jadx(apk_file):
+    """Разархивирует APK-файл при помощи jadx
+    и достает из него package name и версии сборки и SDK.
+    Возвращает имя пакета и UID при успешном завершении
     """
-    # aapt dump badging base.apk | grep "package"
-    # Вариант как можно получить название пакета
-    # Get_compileSdkVersion = "grep -o 'compileSdkVersion=\S*' ./apk/AndroidManifest.xml"
-    # Get_package = "grep -o 'package\S*' ./apk/AndroidManifest.xml"
-    get_debuggable = "grep -o 'debuggable=\S*' ./"+package+"/AndroidManifest.xml"
-    get_uses_permission = "grep 'uses-permission' ./"+package+"/AndroidManifest.xml"
+    write = False
+    package = ''
+    uid = ''
+    def_path = './'+apk_file[:-4]
+    jadx_cmd = "jadx -d "+def_path+" "+apk_file
+    # Проверка пустая ли папка jadx_out
+    if os.path.exists(def_path):  # Если папка есть и она не пустая,
+        # то очищаем ее.
+        if len(os.listdir(def_path)) == 0:
+            # Папка есть, но пустая.
+            write = True
+        else:  # Папка есть, но не путая.
+            #  os.system('rm -rf %s/*' % def_path)
+            write = False  # True Возможный вариант реализации
+    else:  # Папки нет. Надо запустить jadx
+        write = True
+    if write:
+        try:
+            print('Starting: '+jadx_cmd)
+            ret_val = os.popen(jadx_cmd).read()
+            print(ret_val)
+        except Exception:
+            print('Jadx application error. '+ret_val)
+
+    manifest_path = def_path+'/resources/AndroidManifest.xml'
+    with open(manifest_path) as fd:
+        manifest = xmltodict.parse(fd.read())
+    package = manifest['manifest']['@package']
+    # Переименовываем папку по умолчанию в папку с названием пакета
+    # Проблема этого решения в том, что при повторном запуске
+    # папки с именем файла всегда не будет и постоянно будет
+    # запускаться jadx
+    # os.system('mv %s %s' % (def_path, package))
+
+    # Определение uid пользователя APK
     try:
-        ret_val = os.popen(get_debuggable).read()
-        print(ret_val)
-        ret_val = os.popen(get_uses_permission).read()
-        print(ret_val)
+        get_uid = "adb shell dumpsys  package  " + package + " | grep -o 'userId=\S*'"
+        uid = os.popen(get_uid).read()
+        uid = uid[uid.index("=")+1:-1]
+        print('UID:='+uid)
     except Exception:
-        print('Error reading the manifest. '+ret_val)
+        print('Error when getting the uid. '+uid)
+        raise SystemExit
+    return(package, uid, manifest, def_path)
+
+
+def read_manifest(manifest):
+    """Обработка OrderedDict AndroidManifest.xml
+    Читаем нужные метаданные.
+    """
+    try:
+        print('Package: '+manifest['manifest']['@package'])
+        print('Uses-permissions:')
+        for item in manifest['manifest']['uses-permission']:
+            print(item['@android:name'])
+        if '@android:debuggable' in manifest['manifest']['application']:
+            print('Debuggable: '+manifest['manifest']
+                  ['application']['@android:debuggable'])
+        else:
+            print('Debuggable: False')
+    except Exception:
+        print('Error reading the manifest.')
 
 
 def get_frameworks(package):
@@ -355,13 +407,16 @@ if __name__ == '__main__':
         apk_file = sys.argv[1]
         su_pass = sys.argv[2]
         pause_sec = 10
-        if len(sys.argv) == 4:  # Передан параметр ожидания после запуска приложения
+        if len(sys.argv) == 4:  # Передан параметр ожидания после
+            # запуска приложения
             pause_sec = int(sys.argv[3])
-        tdata = open_apk(apk_file)
+        tdata = open_apk_jadx(apk_file)
         package = tdata[0]
         uid = tdata[1]
+        manifest = tdata[2]
+        def_path = tdata[3]
         if len(package) != 0:
-            read_manifest(package)
+            read_manifest(manifest)
             # get_frameworks(package)
             if device_present():
                 install_apk(apk_file, package)
