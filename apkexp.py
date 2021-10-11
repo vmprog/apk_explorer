@@ -4,6 +4,7 @@
 import os
 import subprocess
 import sys
+import getopt
 import time
 import xmltodict
 import json
@@ -16,7 +17,6 @@ def open_apk_jadx(apk_file):
     """
     write = False
     package = ''
-    uid = ''
     def_path = './'+apk_file[:-4]
     jadx_cmd = "jadx -d "+def_path+" "+apk_file
     # Проверка пустая ли папка jadx_out
@@ -49,17 +49,18 @@ def open_apk_jadx(apk_file):
     # запускаться jadx
     # os.system('mv %s %s' % (def_path, package))
 
-    # Определение uid пользователя APK
-    try:
-        get_uid = 'adb shell dumpsys package ' + package +\
-            r' | grep -o "userId=\S*"'
-        uid = os.popen(get_uid).read()
-        uid = uid[uid.index("=")+1:-1]
-        print('UID:='+uid)
-    except Exception:
-        print('Error when getting the uid. '+uid)
-        raise SystemExit
-    return(package, uid, manifest, def_path)
+    # # Определение uid пользователя APK. Вынес в отдельную функцию т.к.
+    # если приложение не установлено, но uid получить не можем
+    # try:
+    #     get_uid = 'adb shell dumpsys package ' + package +\
+    #         r' | grep -o "userId=\S*"'
+    #     uid = os.popen(get_uid).read()
+    #     uid = uid[uid.index("=")+1:-1]
+    #     print('UID:='+uid)
+    # except Exception:
+    #     print('Error when getting the uid. '+uid)
+    #     raise SystemExit
+    return(package, manifest, def_path)
 
 
 def read_manifest(manifest):
@@ -135,7 +136,40 @@ def install_apk(apk_file, package):
         print('Error when getting installed applications!')
 
 
-def set_iptables(uid, su_pass, device_ip):
+def get_uid(package):
+    """Получает uid пользователя приложения
+    """
+    # Определение uid пользователя APK
+    uid = ''
+    try:
+        get_uid = 'adb shell dumpsys package ' + package +\
+            r' | grep -o "userId=\S*"'
+        uid = os.popen(get_uid).read()
+        uid = uid[uid.index("=")+1:-1]
+        print('UID:='+uid)
+    except Exception:
+        print('Error when getting the uid. '+uid)
+        raise SystemExit
+    return uid
+
+
+def get_magisk_su():
+    """Проверяем установелн ли magisk
+    от этого зависит с какими аргументами запускать adb shell su -c
+    или su 0
+    """
+    try:
+        get_magisk = 'adb shell pm list packages | grep magisk'
+        ret_val = os.popen(get_magisk).read()
+        if len(ret_val) != 0:
+            return True
+    except Exception:
+        print('Error when getting Magisk is presents!')
+        raise SystemExit
+    return False
+
+
+def set_iptables(uid, su_pass, device_ip, magisk, type_p):
     """Настройка iptables на устройстве и на
     компьютере с mitmproxy
     На устройств:
@@ -145,10 +179,15 @@ def set_iptables(uid, su_pass, device_ip):
     Весь трафик с device IP направляем в порт прокси 8080
     """
     try:  # Настраиваем устройство
-        ipt1_device = 'adb shell su -c "iptables -P OUTPUT DROP"'
+        if magisk:
+            ipt1_device = 'adb shell su -c "iptables -P OUTPUT DROP"'
+            ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT '\
+                '-m owner --uid-owner '+uid+'"'
+        else:
+            ipt1_device = 'adb shell "su 0 iptables -P OUTPUT DROP"'
+            ipt2_device = 'adb shell "su 0 iptables -P OUTPUT ACCEPT '\
+                '-m owner --uid-owner '+uid+'"'
         ret_vald = os.popen(ipt1_device).read()
-        ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT -m owner '\
-            '--uid-owner '+uid+'"'
         ret_vald = os.popen(ipt2_device).read()
 
         # Вариант перенаправлять прямо на телефоне
@@ -171,10 +210,22 @@ def set_iptables(uid, su_pass, device_ip):
             ipt4_host = 'echo '+su_pass+' | sudo sysctl -w '\
                 'net.ipv4.conf.all.send_redirects=0'
             ret_val = os.popen(ipt4_host).read()
-            ipt5_host = 'echo '+su_pass + \
-                ' | sudo iptables -t nat -A PREROUTING -s '+device_ip + \
-                ' -p tcp -j REDIRECT --to-port 8080'
-            ret_val = os.popen(ipt5_host).read()
+            if type_p == 'd':  # настройка для device
+                ipt5_host = 'echo '+su_pass + \
+                    ' | sudo iptables -t nat -A PREROUTING -s '+device_ip + \
+                    ' -p tcp -j REDIRECT --to-port 8080'
+                ret_val = os.popen(ipt5_host).read()
+            elif type_p == 'e':  # настройка для avd emulator
+                ipt5_host = 'echo '+su_pass + \
+                    ' | sudo iptables -t nat -A OUTPUT -p tcp -m owner '\
+                    '! --uid-owner mitmproxyuser --dport 80 -j REDIRECT '\
+                            '--to-port 8080'
+                ret_val = os.popen(ipt5_host).read()
+                ipt6_host = 'echo '+su_pass + \
+                    ' | sudo iptables -t nat -A OUTPUT -p tcp -m owner '\
+                    '! --uid-owner mitmproxyuser --dport 443 -j REDIRECT '\
+                            '--to-port 8080'
+                ret_val = os.popen(ipt6_host).read()
         except Exception:
             print('Error applying the rules on the host! '+ret_val)
     except Exception:
@@ -185,20 +236,31 @@ def start_mitm():
     """Запуск proxydump в прозрачном режиме
     """
     try:
-        mitm_cmd = 'mitmdump --mode transparent --showhost -w '+package+'.trf'
+        # mitm_cmd = 'mitmdump --mode transparent
+        # --showhost -w '+package+'.trf'
+        # mitm_cmd = 'mitmdump --mode transparent --showhost '\
+        #    '--set confdir=./serts -w '+package+'.trf'
+        mitm_postfix = "'/usr/bin/mitmdump --mode transparent --showhost '\
+            '--set block_global=false'"
+        mitm_cmd = 'echo '+su_pass + \
+            ' | sudo -u mitmproxyuser -H bash -c '+mitm_postfix
         print('Starting the mitm: '+mitm_cmd)
-        subprocess.Popen(mitm_cmd, shell=True)
+        return subprocess.Popen(mitm_cmd, shell=True)
     except Exception:
         print('Error starting mitm!')
 
 
-def unset_ipt_app(su_pass):
+def unset_ipt_app(su_pass, magisk):
     """Отключение правил iptables
     """
     try:
-        ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT"'
+        if magisk:
+            ipt2_device = 'adb shell su -c "iptables -P OUTPUT ACCEPT"'
+            ipt1_device = 'adb shell su -c "iptables -t nat -F"'
+        else:
+            ipt2_device = 'adb shell "su 0 iptables -P OUTPUT ACCEPT"'
+            ipt1_device = 'adb shell "su 0 iptables -t nat -F"'
         ret_val = os.popen(ipt2_device).read()
-        ipt1_device = 'adb shell su -c "iptables -t nat -F"'  # Новое для теста
         ret_val = os.popen(ipt1_device).read()
         try:
             ipt1_host = 'echo '+su_pass+' | sudo -S iptables -t nat -F'
@@ -233,7 +295,7 @@ def stop_app(package):
         print('Error stopping the application! '+ret_val)
 
 
-def stop_mitm():
+def stop_mitm(process):
     """Завершение приложения mitmdump.
     """
     print('Stopping the mitmdump.')
@@ -242,10 +304,12 @@ def stop_mitm():
         pid = os.popen(get_pid).read()
         try:
             if len(pid) != 0:
-                stop_app = 'kill '+pid
+                print('Найденные pid: '+pid)
+                stop_app = 'echo '+su_pass+' | sudo -S kill '+pid
                 ret_val = os.popen(stop_app).read()
         except Exception:
             print('Error stopping the mitmdump! '+ret_val)
+        process.kill()
     except Exception:
         print('The mitmdump pid was not found! '+ret_val)
 
@@ -253,31 +317,60 @@ def stop_mitm():
 if __name__ == '__main__':
     package = ''
     uid = ''
-    if len(sys.argv) >= 4:
-        apk_file = sys.argv[1]
-        su_pass = sys.argv[2]
-        device_ip = sys.argv[3]
+    type_p = None
+    apk_file = None
+    su_pass = None
+    device_ip = None
+    args = sys.argv[1:]
+    optlist, args = getopt.getopt(
+        args, 't:a:p:i:d:', ['type=', 'apk=', 'pass=', 'dev_ip=', 'delay='])
+    try:
+        type_p = next(filter(lambda x: x[0] == '--type', optlist), None)[1]
+    except Exception:
+        print('The --type parameter must be present!')
+        raise SystemExit
+    try:
+        apk_file = next(filter(lambda x: x[0] == '--apk', optlist), None)[1]
+    except Exception:
+        print('The --apk parameter must be present!')
+        raise SystemExit
+    try:
+        su_pass = next(filter(lambda x: x[0] == '--pass', optlist), None)[1]
+    except Exception:
+        print('The --pass parameter must be present!')
+        raise SystemExit
+    if type_p == 'd':
+        try:
+            device_ip = next(
+                filter(lambda x: x[0] == '--dev_ip', optlist), None)[1]
+        except Exception:
+            if type_p == 'd':
+                print('The --dev_ip parameter must be present!')
+                raise SystemExit
+    try:
+        pause_sec = int(
+            next(filter(lambda x: x[0] == '--delay', optlist), None)[1])
+    except Exception:
         pause_sec = 10
-        if len(sys.argv) == 5:  # Передан параметр ожидания после
-            # запуска приложения
-            pause_sec = int(sys.argv[4])
-        tdata = open_apk_jadx(apk_file)
-        package = tdata[0]
-        uid = tdata[1]
-        manifest = tdata[2]
-        def_path = tdata[3]
-        if len(package) != 0:
-            read_manifest(manifest)
-            get_frameworks_json(def_path)
-            if device_present():
-                install_apk(apk_file, package)
-                set_iptables(uid, su_pass, device_ip)
-                start_mitm()
-                run_apk(package, pause_sec)
-                stop_app(package)
-                stop_mitm()
-                unset_ipt_app(su_pass)
-            else:
-                print("No connected devices were detected!")
+
+    tdata = open_apk_jadx(apk_file)
+    package = tdata[0]
+    manifest = tdata[1]
+    def_path = tdata[2]
+    if len(package) != 0:
+        read_manifest(manifest)
+        get_frameworks_json(def_path)
+        if device_present():
+            install_apk(apk_file, package)
+            uid = get_uid(package)
+            magisk = get_magisk_su()
+            set_iptables(uid, su_pass, device_ip, magisk, type_p)
+            process = start_mitm()
+            run_apk(package, pause_sec)
+            stop_app(package)
+            stop_mitm(process)
+            unset_ipt_app(su_pass, magisk)
+        else:
+            print("No connected devices were detected!")
     else:
-        print("Usage: python3 apkexp some.apk su_pass ip_device puse_sec")
+        print("Usage: python3 apkexp --type --apk --pass --dev_ip --delay")
