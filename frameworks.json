@@ -1,0 +1,12 @@
+{
+    "frameworks": [
+        {
+            "code_signature": "com.google.firebase.analytics",
+            "name": "Google Firebase Analytics"
+        },
+        {
+            "code_signature": "com.google.firebase.crashlytics",
+            "name": "Google Crashlytics"
+        }
+    ]
+}

@@ -1,0 +1,9 @@
+.spyproject/
+*.log
+build/
+backup/
+node_modules/
+.idea/
+jadx/
+my_notes.txt
+*.swp
