@@ -1,0 +1,29 @@
+---
+- Apk: # Main section
+    jadx: jadx %apk -d %tempdir
+    check_device: adb devices | grep device$
+    get_badging: aapt dump badging %p > %tempdir/badging_output.txt
+    get_package: cat %tempdir/badging_output.txt | awk '/package/{gsub("name=|'"'"'",""); printf $2}'
+    get_install_status: adb shell pm list packages | grep %p
+    install_package: adb install %p
+    uninstall_package: adb shell pm uninstall %p
+    start_app: adb shell monkey -p %p -c android.intent.category.LAUNCHER 1
+    get_running_status: adb shell ps | grep %p
+    stop_app: adb shell am force-stop %p
+    check_app: adb shell ps -p %p | grep %p
+
+- Sast: # Static Application Security Testing
+    app_name: cat %tempdir/badging_output.txt | grep "application-label:" | sed 's/^.*://' | tr -d '\n'
+    version: cat %tempdir/badging_output.txt | grep "versionName" | sed -e "s/.*versionName='//" -e "s/' .*//" | tr -d '\n'
+    checksum: apksigner verify -print-certs %p | grep -Po "(?<=SHA-256 digest:) .*" | xxd -r -p | openssl base64 | tr -d '=' | tr -- '+/=' '-_' | tr -d '\n' 
+    android_id: adb shell settings get secure android_id | tr -d '\n'
+    advertising_id: adb shell "su 0 grep adid_key /data/data/com.google.android.gms/shared_prefs/adid_settings.xml"
+    imei: adb shell service call iphonesubinfo 1 | awk -F"'" 'NR>1 { gsub(/\./,"",$2); imei=imei $2 } END {printf imei}' | tr -d ' \t\n\r\f' 
+  
+    classes: grep -r "public class" %p/sources/ | sed 's/\(class [^ ]*\).*/\1/'  
+
+- Activity:
+    activity_time: 5
+
+- Network:
+    host_ip: 192.168.1.70

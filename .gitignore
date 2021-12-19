@@ -7,3 +7,5 @@ node_modules/
 jadx/
 my_notes.txt
 *.swp
+exynex.log
+pylintrc
