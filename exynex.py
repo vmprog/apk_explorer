@@ -498,7 +498,7 @@ if __name__ == '__main__':
 
     with tempfile.TemporaryDirectory() as app_tempdir:
         if __debug__:
-            app_tempdir = '/home/kl/APK/research'
+            app_tempdir = './research'
         logger.info('The temp directory is %s', app_tempdir)
         default_output = '%s/exynex_output.json' % (app_tempdir)
 

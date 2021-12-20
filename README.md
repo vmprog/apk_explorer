@@ -10,7 +10,7 @@
 
 <hr />
 
-[![python lint](https://github.com/TencentARC/GFPGAN/actions/workflows/pylint.yml/badge.svg)](https://github.com/TencentARC/GFPGAN/blob/master/.github/workflows/pylint.yml)
+![python lint](https://github.com/vmprog/apk_explorer/blob/exynex_dev/badges/pylint.svg)
 
 <p>This command line utility allows you to perform static and dynamic analysis of android apk files.</p>
 
