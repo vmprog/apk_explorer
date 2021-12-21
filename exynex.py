@@ -3,7 +3,7 @@
 """This command line utility allows you to perform static and dynamic
 analysis of android apk files.
 Project page:
-https://github.com/vmprog/apk_explorer/blob/main/README.md
+https://github.com/vmprog/exynex/blob/main/README.md
 """
 
 import sys
