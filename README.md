@@ -80,6 +80,10 @@ The analysis can be carried out both on a real device and on an emulator.
 
 - [Android Studio/Android Sdk](https://developer.android.com/studio) is installed (tested with Version 4.1.3 for Linux 64-bit)]
 
+<p align="center">
+<a target="_blank" href="LICENSE"><img src="https://github.com/vmprog/exynex/blob/exynex_dev/badges/sdk_set.jpg"></a>
+</p>
+
 * Emulator and adb executables from Android Sdk have been added to $PATH variable
 
    	* emulator usually located at /home/<your_user_name>/Android/Sdk/emulator/emulator
@@ -172,6 +176,14 @@ To capture and decrypt traffic, you need to [install mitmproxy certificates on t
 ## Usage.
 
 Config the config.yaml
+
+```
+- Activity:
+      activity_time: 5 # Time to activity.
+  
+- Network:
+      device_ip: 192.168.1.70 # IP of device or emulator.
+```
 
 The script also accepts some options:
 ```

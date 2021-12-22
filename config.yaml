@@ -23,7 +23,7 @@
     classes: grep -r "public class" %p/sources/ | sed 's/\(class [^ ]*\).*/\1/'  
 
 - Activity:
-    activity_time: 5
+    activity_time: 5 # Time to activity.
 
 - Network:
-    host_ip: 192.168.1.70
+    device_ip: 192.168.1.70 # IP of device or emulator.
