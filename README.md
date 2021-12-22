@@ -10,6 +10,10 @@
 
 <hr />
 
+<p align="center">
+<a target="_blank" href="LICENSE"><img src="https://github.com/vmprog/exynex/blob/exynex_dev/badges/pylint.svg"></a>
+</p>
+
 <p>This command line utility allows you to perform static and dynamic analysis of android apk files.</p>
 
 <p>Static analysis allows you to obtain the following data:</p>
@@ -170,6 +174,7 @@ To capture and decrypt traffic, you need to [install mitmproxy certificates on t
 Config the config.yaml
 
 The script also accepts some options:
+```
 positional arguments:
   analyze              Command to analyze.
   PATH_TO_APK          Path to APK file.
@@ -179,6 +184,7 @@ optional arguments:
   --output OUTPUT      Path to report.
   --allow_permissions  Allow to any permissions requests.
   --verbose            Produces debugging output.
+```
 
 ####Run on local Linux
 ```
