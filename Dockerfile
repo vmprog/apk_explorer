@@ -8,6 +8,8 @@ ENV JAVA_HOME /usr/local/openjdk-11
 
 RUN update-alternatives --install /usr/bin/java java /usr/local/openjdk-11/bin/java 1
 
+ENV PATH=${PATH}:$JAVA_HOME/bin
+
 RUN apt-get update && \
 		apt-get -y install sudo &&\
 		apt-get -y install gcc &&\
@@ -41,7 +43,6 @@ RUN sudo apt-get -y install android-tools-adb && \
     sudo apt-get -y install iptables && \
     sudo apt-get -y install procps && \
 	sudo apt-get -y install aapt && \
-	#sudo apt-get -y install apksigner && \
 	sudo apt-get -y install xxd
 
 EXPOSE 8080 8081

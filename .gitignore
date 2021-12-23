@@ -5,6 +5,7 @@ backup/
 node_modules/
 .idea/
 jadx/
+research/*.*
 my_notes.txt
 *.swp
 exynex.log

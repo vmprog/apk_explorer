@@ -99,7 +99,8 @@ def start_jadx(path_to_apk, tempdir, verbose):
     if verbose:
         logger.debug('Entering the function: "start_jadx"')
 
-    if not __debug__:
+    jadx_dir = '%s/resources' % (tempdir)
+    if not os.path.exists(jadx_dir):
         jadx = cfg[0]['Apk']['jadx']
         jadx = jadx.replace('%apk', path_to_apk)
         jadx = jadx.replace('%tempdir', tempdir)
@@ -391,10 +392,16 @@ def make_report(output, path_to_apk, tempdir, verbose):
     else:
         logger.error('Error getting version.')
 
-    data['version_code'] = ''
+    version_code_cmd = cfg[1]['Sast']['version_code']
+    version_code_cmd = version_code_cmd.replace('%tempdir', tempdir)
+    version_code = os.popen(version_code_cmd).read()
+    if len(version_code):
+        data['version_code'] = version_code
+    else:
+        logger.error('Error getting version_code.')
 
     checksum_cmd = cfg[1]['Sast']['checksum']
-    checksum_cmd = checksum_cmd.replace('%p', path_to_apk)
+    checksum_cmd = checksum_cmd.replace('%p', tempdir)
     checksum = os.popen(checksum_cmd).read()
     if len(checksum):
         data['checksum'] = checksum
