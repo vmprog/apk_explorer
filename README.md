@@ -204,10 +204,21 @@ python3 -O exynex.py analyze some.apk --allow_permissions
 ```
 
 ####Run on Docker
+Starting the container:
+
 ```
-sudo docker run -it --net=host --privileged -v /dev/bus/usb:/dev/bus/usb -v /home/kl/APK/research:/home/researcher/app_src/research -v /home/kl/APK:/home/researcher/APK --mount src="$(pwd)",target=/home/researcher/app_src,type=bind --mount src="/home/mitmproxyuser/.mitmproxy",target=/home/mitmproxyuser/.mitmproxy,type=bind  python-img:5.1 /bin/bash 
+sudo docker run -it --net=host --privileged \
+-v /dev/bus/usb:/dev/bus/usb \
+-v /folder/with/apk:/home/researcher/APK \
+--mount src="$(pwd)",target=/home/researcher/app_src,type=bind \
+--mount src="/home/mitmproxyuser/.mitmproxy",target=/home/mitmproxyuser/.mitmproxy,type=bind  \
+python-img:5.1 /bin/bash
 ```
- 
+ >**Note:** Where /folder/with/apk - is the folder on host where the apk file for research is located.
+
+```
+python3 -O exynex.py analyze ~/APK/some.apk --allow_permissions
+```
 
 <a id="other"></a>
 ## Other.
