@@ -440,8 +440,23 @@ def make_report(output, path_to_apk, tempdir, verbose):
     })
 
     static_analysis = {}
-    static_analysis['urls'] = ''
-    static_analysis['domains'] = ''
+
+    urls_cmd = cfg[1]['Sast']['urls']
+    urls_cmd = urls_cmd.replace('%p', tempdir)
+    urls = os.popen(urls_cmd).read()
+    if len(urls):
+        static_analysis['urls'] = urls.split('\n')
+    else:
+        logger.error('Error getting urls.')
+
+    domains_cmd = cfg[1]['Sast']['domains']
+    domains_cmd = domains_cmd.replace('%p', tempdir)
+    domains = os.popen(domains_cmd).read()
+    if len(domains):
+        static_analysis['domains'] = domains.split('\n')
+    else:
+        logger.error('Error getting domains.')
+
     static_analysis['libraries'] = ''
 
     classes_cmd = cfg[1]['Sast']['classes']

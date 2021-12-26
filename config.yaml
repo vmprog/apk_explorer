@@ -17,11 +17,13 @@
     version: cat %tempdir/badging_output.txt | grep "versionName" | sed -e "s/.*versionName='//" -e "s/' .*//" | tr -d '\n'
     version_code: cat %tempdir/badging_output.txt | grep "versionCode" | sed -e "s/.*versionCode='//" -e "s/' .*//" | tr -d '\n' 
     # checksum: apksigner verify -print-certs %p | grep -Po "(?<=SHA-256 digest:) .*" | xxd -r -p | openssl base64 | tr -d '=' | tr -- '+/=' '-_' | tr -d '\n' 
-    checksum: keytool -printcert -file %p/resources/META-INF/CERT.RSA | grep -Po "(?<=SHA256:) .*" | xxd -r -p | openssl base64 | tr -d '=' | tr -- '+/=' '-_' | tr -d '\n'
+    checksum: keytool -printcert -file %p/resources/META-INF/*.RSA | grep -Po "(?<=SHA256:) .*" | xxd -r -p | openssl base64 | tr -d '=' | tr -- '+/=' '-_' | tr -d '\n'
     android_id: adb shell settings get secure android_id | tr -d '\n'
     advertising_id: adb shell "su 0 grep adid_key /data/data/com.google.android.gms/shared_prefs/adid_settings.xml"
     imei: adb shell service call iphonesubinfo 1 | awk -F"'" 'NR>1 { gsub(/\./,"",$2); imei=imei $2 } END {printf imei}' | tr -d ' \t\n\r\f' 
   
+    urls: grep -r -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" %p/sources/ | sort -u
+    domains: grep -r -Po ".*?//\K.*?(?=/)" %p/sources/ | sort -u 
     classes: grep -r "public class" %p/sources/ | sed 's/\(class [^ ]*\).*/\1/'  
 
 - Activity:
