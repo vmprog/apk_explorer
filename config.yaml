@@ -24,10 +24,34 @@
   
     urls: grep -r -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" %p/sources/ | sort -u
     domains: grep -r -Po ".*?//\K.*?(?=/)" %p/sources/ | sort -u 
+    libraries: find %p -name *.so
     classes: grep -r "public class" %p/sources/ | sed 's/\(class [^ ]*\).*/\1/'  
 
 - Activity:
     activity_time: 5 # Time to activity.
 
 - Network:
+    # Device / emulator
     device_ip: 192.168.1.70 # IP of device or emulator.
+    dev_setup_magisk_1: adb shell su -c "iptables -P OUTPUT DROP"
+    dev_setup_magisk_2: adb shell su -c "iptables -P OUTPUT ACCEPT -m owner --uid-owner %u"
+    dev_setup_1: adb shell "su 0 iptables -P OUTPUT DROP"
+    dev_setup_2: adb shell "su 0 iptables -P OUTPUT ACCEPT -m owner --uid-owner %u"
+
+    # Host
+    host_setup_1: echo %su_pass | sudo -S iptables -t nat -F
+    host_setup_2: echo %su_pass | sudo -S sysctl -w net.ipv4.ip_forward=1
+    host_setup_3: echo %su_pass | sudo sysctl -w net.ipv6.conf.all.forwarding=1
+    host_setup_4: echo %su_pass | sudo sysctl -w net.ipv4.conf.all.send_redirects=0
+    host_setup_5: echo %su_pass | sudo iptables -t nat -A PREROUTING -s device_ip -p tcp -j REDIRECT --to-port 8080
+
+
+
+
+
+
+
+
+
+
+

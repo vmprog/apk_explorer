@@ -348,7 +348,7 @@ def stop_application(package, pid, verbose):
         logger.debug('Exiting the function: "stop_app"')
 
 
-def make_report(output, path_to_apk, tempdir, verbose):
+def make_report(output, tempdir, verbose):
     """Creates a report based on the results of the analysis.
 
     Args:
@@ -457,7 +457,13 @@ def make_report(output, path_to_apk, tempdir, verbose):
     else:
         logger.error('Error getting domains.')
 
-    static_analysis['libraries'] = ''
+    libraries_cmd = cfg[1]['Sast']['libraries']
+    libraries_cmd = libraries_cmd.replace('%p', tempdir)
+    libraries = os.popen(libraries_cmd).read()
+    if len(libraries):
+        static_analysis['libraries'] = libraries.split('\n')
+    else:
+        logger.error('Error getting libraries.')
 
     classes_cmd = cfg[1]['Sast']['classes']
     classes_cmd = classes_cmd.replace('%p', tempdir)
@@ -513,7 +519,7 @@ def main(path_to_apk, output, allow_permissions, verbose,
     activity(runtime_data[0], verbose)
     stop_application(package, runtime_data[1], verbose)
     remove_apk(package, verbose)
-    make_report(output, path_to_apk, tempdir, verbose)
+    make_report(output, tempdir, verbose)
 
 
 if __name__ == '__main__':
