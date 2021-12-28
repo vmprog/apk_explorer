@@ -16,7 +16,6 @@ import tempfile
 from datetime import datetime
 import time
 import xmltodict
-import yaml
 
 stdout = sys.stdout
 
@@ -25,7 +24,7 @@ stdout = sys.stdout
 logger = logging.getLogger('')
 if logger.hasHandlers():
     logger.handlers.clear()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 fh = logging.FileHandler('exynex.log')
 sh = logging.StreamHandler(sys.stdout)
 formatter = logging.Formatter(
@@ -36,24 +35,13 @@ sh.setFormatter(formatter)
 logger.addHandler(fh)
 logger.addHandler(sh)
 
-# Reading the configuration file
 
-try:
-    with open('config.yaml', 'r') as cfgfh:
-        cfg = yaml.safe_load(cfgfh)
-except OSError as error:
-    logger.warning('Could not read config.yaml (reason: %r):',
-                   error)
-    sys.exit(1)
-
-
-def check_command_line(path_to_apk, output, verbose):
+def check_command_line(path_to_apk, output):
     """Checks the correctness of the command line.
 
     Args:
       path_to_apk: Absolute path of apk placement.
       output: Absolute path of report placement.
-      verbose: Verbose mode flag.
 
     Returns:
       Nothing.
@@ -62,8 +50,8 @@ def check_command_line(path_to_apk, output, verbose):
       SystemExit: If no path to apk  is found.
       OSError: If error creating the report file.
     """
-    if verbose:
-        logger.debug('Entering the function: "check_command_line"')
+
+    logger.debug('Entering the function: "check_command_line"')
 
     check_path_to_apk = os.path.exists(path_to_apk)
     if not check_path_to_apk:
@@ -78,17 +66,15 @@ def check_command_line(path_to_apk, output, verbose):
                      error_rep, output)
         sys.exit(1)
 
-    if verbose:
-        logger.debug('Exiting the function: "check_command_line"')
+    logger.debug('Exiting the function: "check_command_line"')
 
 
-def start_jadx(path_to_apk, tempdir, verbose):
+def start_jadx(path_to_apk, tempdir):
     """Start JADX decompiler.
 
     Args:
       path_to_apk: Absolute path of apk placement.
       tempdir: Absolute path for temp files.
-      verbose: Verbose mode flag.
 
     Returns:
       Nothing.
@@ -96,14 +82,12 @@ def start_jadx(path_to_apk, tempdir, verbose):
     Raises:
       OSError: If JADX runtime error.
     """
-    if verbose:
-        logger.debug('Entering the function: "start_jadx"')
 
-    jadx_dir = '%s/resources' % (tempdir)
+    logger.debug('Entering the function: "start_jadx"')
+
+    jadx_dir = f'{tempdir}/resources'
     if not os.path.exists(jadx_dir):
-        jadx = cfg[0]['Apk']['jadx']
-        jadx = jadx.replace('%apk', path_to_apk)
-        jadx = jadx.replace('%tempdir', tempdir)
+        jadx = f'jadx {path_to_apk} -d {tempdir}'
         logger.info('Starting Jadx: %s', jadx)
         try:
             os.popen(jadx).read()
@@ -112,15 +96,14 @@ def start_jadx(path_to_apk, tempdir, verbose):
                            error_jd)
             sys.exit(1)
 
-    if verbose:
-        logger.debug('Exiting the function: "start_jadx"')
+    logger.debug('Exiting the function: "start_jadx"')
 
 
-def check_device(verbose):
+def check_device():
     """Checking the device connection.
 
     Args:
-      verbose: Verbose mode flag.
+      Nothing.
 
     Returns:
       Nothing.
@@ -128,67 +111,104 @@ def check_device(verbose):
     Raises:
       SystemExit: If the device is not connected.
     """
-    if verbose:
-        logger.debug('Entering the function: "check_device"')
 
-    get_devices = cfg[0]['Apk']['check_device']
+    logger.debug('Entering the function: "check_device"')
+
+    get_devices = 'adb devices | grep device$'
     ret_val = os.popen(get_devices).read()
     if not ret_val:
         logger.error('Error checking devices!: %s', ret_val)
         raise SystemExit(1)
 
-    if verbose:
-        logger.debug('Exiting the function: "check_device"')
+    logger.debug('Exiting the function: "check_device"')
 
 
-def install_apk(path_to_apk, tempdir, verbose):
+def get_badging(path_to_apk):
+    """Get dump from apk with aapt dump badging.
+
+    Args:
+      path_to_apk: Absolute path of apk placement.
+
+    Returns:
+      Nothing.
+
+    Raises:
+      SystemExit: If error getting badging.
+      SystemExit: If error getting the package name.
+      SystemExit: If error getting the application name.
+      SystemExit: If error getting the version.
+      SystemExit: If error getting the version_code.
+    """
+
+    logger.debug('Entering the function: "get_badging"')
+
+    get_badging_cmd = f'aapt dump badging {path_to_apk}'
+    badging = os.popen(get_badging_cmd).read()
+    if not badging:
+        logger.error('Error getting the badging.')
+        raise SystemExit(1)
+
+    awk_cmd = 'awk \'/package/{gsub("name=|\'"\'"\'",""); printf $2}\''
+    package_cmd = f'echo "{badging}" | {awk_cmd}'
+    logger.info('Getting the package name!')
+    package = os.popen(package_cmd).read()
+    if not package:
+        logger.error('Error getting the package name!')
+        raise SystemExit(1)
+
+    cmd = 'grep "application-label:" | sed \'s/^.*://\' | tr -d \'\\n\''
+    app_name_cmd = f'echo "{badging}" | {cmd}'
+    logger.info('Getting the application name.')
+    app_name = os.popen(app_name_cmd).read()
+    if not app_name:
+        logger.error('Error getting the application name!')
+        raise SystemExit(1)
+
+    cmd1 = 'grep "versionName"'
+    cmd2 = 'sed -e "s/.*versionName=\'//" -e "s/\' .*//" | tr -d \'\\n\''
+    version_cmd = f'echo "{badging}" | {cmd1} | {cmd2}'
+    logger.info('Getting the version.')
+    version = os.popen(version_cmd).read()
+    if not version:
+        logger.error('Error getting the version!')
+        raise SystemExit(1)
+
+    cmd1 = 'grep "versionCode"'
+    cmd2 = 'sed -e "s/.*versionCode=\'//" -e "s/\' .*//" | tr -d \'\\n\''
+    version_code_cmd = f'echo "{badging}" | {cmd1} | {cmd2}'
+    logger.info('Getting the version_code.')
+    version_code = os.popen(version_code_cmd).read()
+    if not version_code:
+        logger.error('Error getting the version_code!')
+        raise SystemExit(1)
+
+    logger.debug('Exiting the function: "get_badging"')
+
+    return{'package': package, 'app_name': app_name, 'version': version,
+           'version_code': version_code}
+
+
+def install_apk(package, path_to_apk):
     """Installing the apk on a device or emulator.
 
     Args:
       path_to_apk: Absolute path of apk placement.
-      tempdir: Absolute path for temp files.
-      verbose: Verbose mode flag.
 
     Returns:
-      APK package name.
+      Nothing.
 
     Raises:
-      SystemExit: If error getting badging.
-      SystemExit: If error getting data from aapt.
       SystemExit: If APK installation error.
     """
-    if verbose:
-        logger.debug('Entering the function: "install_apk"')
 
-    get_badging = cfg[0]['Apk']['get_badging']
-    get_badging = get_badging.replace('%p', path_to_apk)
-    get_badging = get_badging.replace('%tempdir', tempdir)
-    os.popen(get_badging).read()
-    badging_path = '%s/badging_output.txt' % (tempdir)
-    check_badging = os.path.exists(badging_path)
-    if not check_badging:
-        logger.error('There is no badging_output.txt on the specified '
-                     'path: %s', {tempdir})
-        raise SystemExit(1)
+    logger.debug('Entering the function: "install_apk"')
 
-    get_package = cfg[0]['Apk']['get_package']
-    get_package = get_package.replace('%tempdir', tempdir)
-    logger.info('Getting the package name: %s', get_package)
-    package = os.popen(get_package).read()
-    if not package:
-        logger.error('Error getting data from aapt!: %s', package)
-        raise SystemExit(1)
-    else:
-        logger.info('The package name is: %s', package)
-
-    get_install_status = cfg[0]['Apk']['get_install_status']
-    get_install_status = get_install_status.replace('%p', package)
+    get_install_status = f'adb shell pm list packages | grep {package}'
     logger.info('Getting package status: %s', get_install_status)
     package_presents = os.popen(get_install_status).read()
     if not package_presents:
         logger.info('The package %s is not installed.', package)
-        install_package = cfg[0]['Apk']['install_package']
-        install_package = install_package.replace('%p', path_to_apk)
+        install_package = f'adb install {path_to_apk}'
         logger.info('Installing the APK: %s', path_to_apk)
         installaation = os.popen(install_package).read()
         if 'Success' in installaation:
@@ -199,48 +219,14 @@ def install_apk(path_to_apk, tempdir, verbose):
     else:
         logger.info('The package %s is already installed.', package)
 
-    if verbose:
-        logger.debug('Exiting the function: "install_apk"')
-
-    return package
+    logger.debug('Exiting the function: "install_apk"')
 
 
-def remove_apk(package, verbose):
-    """Removing the apk from the device or emulator.
-
-    Args:
-      package: Package name of apk.
-      verbose: Verbose mode flag.
-
-    Returns:
-      Nothing.
-
-    Raises:
-      SystemExit: If package uninstallation error.
-    """
-    if verbose:
-        logger.debug('Entering the function: "remove_apk"')
-
-    uninstall_package = cfg[0]['Apk']['uninstall_package']
-    uninstall_package = uninstall_package.replace('%p', package)
-    logger.info('Uninstalling the package: %s', uninstall_package)
-    result = os.popen(uninstall_package).read()
-    if 'Success' in result:
-        logger.info('The apk is uninstalled: %s', package)
-    else:
-        logger.error('Package uninstallation error!: %s', package)
-        raise SystemExit(1)
-
-    if verbose:
-        logger.debug('Exiting the function: "remove_apk"')
-
-
-def start_application(package, verbose):
+def start_application(package):
     """Start application on the device or emulator.
 
     Args:
       package: Package name of apk.
-      verbose: Verbose mode flag.
 
     Returns:
       start_ts: Application launch timestamp.
@@ -249,18 +235,17 @@ def start_application(package, verbose):
     Raises:
       SystemExit: If runtime error.
     """
-    if verbose:
-        logger.debug('Entering the function: "start_app"')
 
-    start_app_w = cfg[0]['Apk']['start_app']
-    start_app_w = start_app_w.replace('%p', package)
+    logger.debug('Entering the function: "start_app"')
+
+    start_app_w = (f'adb shell monkey -p {package} -c '
+                   'android.intent.category.LAUNCHER 1')
     logger.info('Starting the package: %s', start_app_w)
     # proc = subprocess.Popen(start_app_w, shell=True)
     with subprocess.Popen(start_app_w, shell=True) as proc:
-        pid = proc.pid
+        pid = str(proc.pid)
         proc.wait()
-    get_running_status = cfg[0]['Apk']['get_running_status']
-    get_running_status = get_running_status.replace('%p', package)
+    get_running_status = f'adb shell ps | grep {package}'
     logger.info('Getting the application status: %s', package)
     app_status = os.popen(get_running_status).read()
     if len(app_status):
@@ -272,18 +257,16 @@ def start_application(package, verbose):
     now = datetime.now()
     start_ts = datetime.timestamp(now)
 
-    if verbose:
-        logger.debug('Exiting the function: "start_app"')
+    logger.debug('Exiting the function: "start_app"')
 
-    return (start_ts, pid)
+    return{'start_timestamp': start_ts, 'pid': pid}
 
 
-def activity(start_timestamp, verbose):
+def activity(start_timestamp, activity_time):
     """Emulation of working with the application.
 
     Args:
       start_timestamp: Application launch timestamp.
-      verbose: Verbose mode flag.
 
     Returns:
       Nothing.
@@ -291,10 +274,9 @@ def activity(start_timestamp, verbose):
     Raises:
       Nothing.
     """
-    if verbose:
-        logger.debug('Entering the function: "activity"')
 
-    activity_time = cfg[2]['Activity']['activity_time']
+    logger.debug('Entering the function: "activity"')
+
     logger.info('Start of activities: %s sec.', activity_time)
 
     # TODO: Activity 1
@@ -309,17 +291,15 @@ def activity(start_timestamp, verbose):
         now_timestamp = datetime.timestamp(now)
         passed_time = now_timestamp - start_timestamp
 
-    if verbose:
-        logger.debug('Exiting the function: "activity"')
+    logger.debug('Exiting the function: "activity"')
 
 
-def stop_application(package, pid, verbose):
+def stop_application(package, pid):
     """Stop application on the device or emulator.
 
     Args:
       package: Package name of apk.
       pid: Pid of application.
-      verbose: Verbose mode flag.
 
     Returns:
       Nothing.
@@ -327,16 +307,14 @@ def stop_application(package, pid, verbose):
     Raises:
       SystemExit: If error stopping the application.
     """
-    if verbose:
-        logger.debug('Entering the function: "stop_app"')
 
-    stop_app = cfg[0]['Apk']['stop_app']
-    stop_app = stop_app.replace('%p', package)
+    logger.debug('Entering the function: "stop_app"')
+
+    stop_app = f'adb shell am force-stop {package}'
     logger.info('Stopping the app: %s', package)
     os.popen(stop_app).read()
 
-    check_app = cfg[0]['Apk']['check_app']
-    check_app = check_app.replace('%p', str(pid))
+    check_app = f'adb shell ps -p {pid} | grep {pid}'
     app_status = os.popen(check_app).read()
     if not app_status:
         logger.info('The application is stopped: %s', package)
@@ -344,18 +322,43 @@ def stop_application(package, pid, verbose):
         logger.error('Error stopping the application!: %s', package)
         raise SystemExit(1)
 
-    if verbose:
-        logger.debug('Exiting the function: "stop_app"')
+    logger.debug('Exiting the function: "stop_app"')
 
 
-def make_report(output, tempdir, verbose):
+def remove_apk(package):
+    """Removing the apk from the device or emulator.
+
+    Args:
+      package: Package name of apk.
+
+    Returns:
+      Nothing.
+
+    Raises:
+      SystemExit: If package uninstallation error.
+    """
+
+    logger.debug('Entering the function: "remove_apk"')
+
+    uninstall_package = f'adb shell pm uninstall {package}'
+    logger.info('Uninstalling the package: %s', uninstall_package)
+    result = os.popen(uninstall_package).read()
+    if 'Success' in result:
+        logger.info('The apk is uninstalled: %s', package)
+    else:
+        logger.error('Package uninstallation error!: %s', package)
+        raise SystemExit(1)
+
+    logger.debug('Exiting the function: "remove_apk"')
+
+
+def make_report(badging, output, tempdir):
     """Creates a report based on the results of the analysis.
 
     Args:
       output: Absolute path of report placement.
       path_to_apk: Absolute path of apk placement.
       tempdir: Absolute path for temp files.
-      verbose: Verbose mode flag.
 
     Returns:
       Nothing.
@@ -363,8 +366,8 @@ def make_report(output, tempdir, verbose):
     Raises:
       Nothing.
     """
-    if verbose:
-        logger.debug('Entering the function: "make_report"')
+
+    logger.debug('Entering the function: "make_report"')
 
     logger.info('Preparing the report...')
 
@@ -374,34 +377,16 @@ def make_report(output, tempdir, verbose):
 
     data = {}
 
-    app_name_cmd = cfg[1]['Sast']['app_name']
-    app_name_cmd = app_name_cmd.replace('%tempdir', tempdir)
-    app_name = os.popen(app_name_cmd).read()
-    if len(app_name):
-        data['app_name'] = app_name
-    else:
-        logger.error('Error getting app_name.')
-
+    data['app_name'] = badging['app_name']
     data['package_name'] = manifest['manifest']['@package']
+    data['version'] = badging['version']
+    data['version_code'] = badging['version_code']
 
-    version_cmd = cfg[1]['Sast']['version']
-    version_cmd = version_cmd.replace('%tempdir', tempdir)
-    version = os.popen(version_cmd).read()
-    if len(version):
-        data['version'] = version
-    else:
-        logger.error('Error getting version.')
-
-    version_code_cmd = cfg[1]['Sast']['version_code']
-    version_code_cmd = version_code_cmd.replace('%tempdir', tempdir)
-    version_code = os.popen(version_code_cmd).read()
-    if len(version_code):
-        data['version_code'] = version_code
-    else:
-        logger.error('Error getting version_code.')
-
-    checksum_cmd = cfg[1]['Sast']['checksum']
-    checksum_cmd = checksum_cmd.replace('%p', tempdir)
+    cmd1 = f'keytool -printcert -file {tempdir}/resources/META-INF/*.RSA'
+    cmd2 = 'grep -Po "(?<=SHA256:) .*"'
+    cmd3 = 'xxd -r -p | openssl base64'
+    cmd4 = 'tr -- \'+/=\' \'-_\' | tr -d \'\\n\''
+    checksum_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
     checksum = os.popen(checksum_cmd).read()
     if len(checksum):
         data['checksum'] = checksum
@@ -412,7 +397,9 @@ def make_report(output, tempdir, verbose):
     device = {}
     device['os_build'] = ''
 
-    android_id_cmd = cfg[1]['Sast']['android_id']
+    cmd1 = 'adb shell settings get secure android_id'
+    cmd2 = 'tr -d \'\\n\''
+    android_id_cmd = f'{cmd1} | {cmd2}'
     android_id = os.popen(android_id_cmd).read()
     if len(android_id):
         device['android_id'] = android_id
@@ -421,11 +408,16 @@ def make_report(output, tempdir, verbose):
 
     device['advertising_id'] = ''
 
-    imei_cmd = cfg[1]['Sast']['imei']
+    cmd1 = 'adb shell service call iphonesubinfo 1'
+    cmd2 = ('awk -F"\'" \'NR>1 { gsub(/\\./,"",$2); imei=imei $2 } '
+            'END {printf imei}\'')
+    cmd3 = 'tr -d \' \\t\\n\\r\\f\''
+    imei_cmd = f'{cmd1} | {cmd2} | {cmd3}'
     imei = os.popen(imei_cmd).read()
     if len(imei):
         device['imei'] = imei
     else:
+        device['imei'] = ''
         logger.error('Error getting imei.')
 
     device['google_account'] = ''
@@ -441,32 +433,34 @@ def make_report(output, tempdir, verbose):
 
     static_analysis = {}
 
-    urls_cmd = cfg[1]['Sast']['urls']
-    urls_cmd = urls_cmd.replace('%p', tempdir)
+    cmd1 = ('grep -r -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" '
+            f'{tempdir}/sources/')
+    cmd2 = 'sort -u'
+    urls_cmd = f'{cmd1} | {cmd2}'
     urls = os.popen(urls_cmd).read()
     if len(urls):
         static_analysis['urls'] = urls.split('\n')
     else:
         logger.error('Error getting urls.')
 
-    domains_cmd = cfg[1]['Sast']['domains']
-    domains_cmd = domains_cmd.replace('%p', tempdir)
+    cmd1 = f'grep -r -Po ".*?//\\K.*?(?=/)" {tempdir}/sources/ | sort -u'
+    domains_cmd = f'{cmd1}'
     domains = os.popen(domains_cmd).read()
     if len(domains):
         static_analysis['domains'] = domains.split('\n')
     else:
         logger.error('Error getting domains.')
 
-    libraries_cmd = cfg[1]['Sast']['libraries']
-    libraries_cmd = libraries_cmd.replace('%p', tempdir)
+    libraries_cmd = f'find {tempdir} -name *.so'
     libraries = os.popen(libraries_cmd).read()
     if len(libraries):
         static_analysis['libraries'] = libraries.split('\n')
     else:
         logger.error('Error getting libraries.')
 
-    classes_cmd = cfg[1]['Sast']['classes']
-    classes_cmd = classes_cmd.replace('%p', tempdir)
+    cmd1 = f'grep -r "public class" {tempdir}/sources/'
+    cmd2 = 'sed \'s/\\(class [^ ]*\\).*/\\1/\''
+    classes_cmd = f'{cmd1} | {cmd2}'
     classes = os.popen(classes_cmd).read()
     if len(classes):
         static_analysis['classes'] = classes.split('\n')
@@ -504,22 +498,22 @@ def make_report(output, tempdir, verbose):
 
     logger.info('The report has been prepared: %s', output)
 
-    if verbose:
-        logger.debug('Exiting the function: "make_report"')
+    logger.debug('Exiting the function: "make_report"')
 
 
-def main(path_to_apk, output, allow_permissions, verbose,
+def main(path_to_apk, output, activity_time, allow_permissions,
          tempdir):
 
-    check_command_line(path_to_apk, output, verbose)
-    start_jadx(path_to_apk, tempdir, verbose)
-    check_device(verbose)
-    package = install_apk(path_to_apk, tempdir, verbose)
-    runtime_data = start_application(package, verbose)
-    activity(runtime_data[0], verbose)
-    stop_application(package, runtime_data[1], verbose)
-    remove_apk(package, verbose)
-    make_report(output, tempdir, verbose)
+    check_command_line(path_to_apk, output)
+    start_jadx(path_to_apk, tempdir)
+    check_device()
+    badging = get_badging(path_to_apk)
+    install_apk(badging['package'], path_to_apk)
+    runtime_data = start_application(badging['package'])
+    activity(runtime_data['start_timestamp'], activity_time)
+    stop_application(badging['package'], runtime_data['pid'])
+    remove_apk(badging['package'])
+    make_report(badging, output, tempdir)
 
 
 if __name__ == '__main__':
@@ -538,6 +532,8 @@ if __name__ == '__main__':
         parser.add_argument('PATH_TO_APK', help='Path to APK file.')
         parser.add_argument('--output', type=str, default=default_output,
                             help='Path to report.')
+        parser.add_argument('--activity_time', type=int, default=5,
+                            help='Time to activity.')
         parser.add_argument('--allow_permissions',
                             help='Allow to any permissions requests.',
                             action='store_true')
@@ -547,5 +543,8 @@ if __name__ == '__main__':
 
         args = parser.parse_args()
 
-        main(args.PATH_TO_APK, args.output,
-             args.allow_permissions, args.verbose, app_tempdir)
+        if args.verbose:
+            logger.setLevel(logging.DEBUG)
+
+        main(args.PATH_TO_APK, args.output, args.activity_time,
+             args.allow_permissions, app_tempdir)

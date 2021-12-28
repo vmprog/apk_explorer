@@ -3,7 +3,7 @@
 <h3 align="center">EXYNEX</h3>
 
 <p align="center">
-  cli tool for static and dynamic analise of android apk. 
+  cli tool for static and dynamic analysis of android apk. 
 </p>
 
 </p>
@@ -35,7 +35,7 @@
 - classes - list of Java/Kotlin classes from the binary
 - permissions - set of permissions from the app manifest
 - activities - list of registered activities from the app manifest
-						]
+		
 <p>Dynamic analysis allows you to obtain the following data:</p>
 
 - network_activity:
@@ -53,11 +53,11 @@
 	- requested_permissions
 
 * [Getting Started](#getting-started)
-	* [Prerequisites for Linux.](#prerequisites)
-	* [Preparing a device.](#preparing-device)
-	* [Preparing an emulator.](#preparing-emulator)	
-	* [Usage.](#usage)
-	* [Other.](#other)
+	* [Prerequisites for Linux](#prerequisites)
+	* [Preparing a device](#preparing-device)
+	* [Preparing an emulator](#preparing-emulator)	
+	* [Usage](#usage)
+	* [Other](#other)
 
 <a id="getting-started"></a>
 ## Getting Started
@@ -86,22 +86,23 @@ The analysis can be carried out both on a real device and on an emulator.
 
 * Emulator and adb executables from Android Sdk have been added to $PATH variable
 
-   	* emulator usually located at /home/<your_user_name>/Android/Sdk/emulator/emulator
-   	on Linux systems
-	* adb usually located at /home/<your_user_name>/Android/Sdk/platform-tools/adb on
-	Linux systems
+   	* emulator usually located at `/home/<your_user_name>/Android/Sdk/emulator/emulator`
+   	* adb usually located at `/home/<your_user_name>/Android/Sdk/platform-tools/adb` 
+	
        * You need to add these lines to .bashrc
         
 ```
 export PATH=$PATH:$HOME/Android/Sdk/platform-tools
 export PATH=$PATH:$HOME/Android/Sdk/emulator
+export PATH=$PATH:/path/to/jre/bin
 ```
 Check environment variable:
-set ANDROID_SDK_ROOT=path_to_sdk
+
+`set ANDROID_SDK_ROOT=path_to_sdk`
 
 #### If Linux environment (Install these packages):
 
-- [python v3.8.8 or later.](https://www.python.org/)
+- [python v3.8.8 or later](https://www.python.org/)
 - adb
 - aapt
 - android-tools-adb
@@ -119,14 +120,14 @@ pip install -r requirements.txt
 
 #### If Docker environment:
 
-- [Docker version v20.10.8 or later.](https://www.docker.com/)
+- [Docker version v20.10.8 or later](https://www.docker.com/)
 
 Install local docker image by running:
 ```
 sudo docker build -t python-img:5.1 .
 ```
 <a id="preparing-device"></a>
-## Preparing a device.
+## Preparing a device
 
 - Developer mode must be enabled on the emulator.
 
@@ -157,7 +158,7 @@ mount -o ro,remount /
 ```
    * CAcert user trusted certificates
 
-####Configuring network.
+#### Configuring network
 
 Before using, you must change the ip address of the gateway to host ip with mitmdump.
 
@@ -168,12 +169,12 @@ If you are using mobile internet, you should find the following setting: Access 
 If you are using WIFI, you should find the protocol selection setting in the settings menu of your access point and set IPv4 only.
 
 <a id="preparing-emulator"></a>
-## Preparing an emulator.
+## Preparing an emulator
 
 To capture and decrypt traffic, you need to [install mitmproxy certificates on the emulator System CA](https://docs.mitmproxy.org/stable/howto-install-system-trusted-ca-android/). The installation approaches depend on the Android version.
 
 <a id="usage"></a>
-## Usage.
+## Usage
 
 Config the config.yaml
 
@@ -198,12 +199,12 @@ optional arguments:
   --verbose            Produces debugging output.
 ```
 
-####Run on local Linux
+#### Run on local Linux
 ```
 python3 -O exynex.py analyze some.apk --allow_permissions
 ```
 
-####Run on Docker
+#### Run on Docker
 Starting the container:
 
 ```
@@ -221,7 +222,7 @@ python3 -O exynex.py analyze ~/APK/some.apk --allow_permissions
 ```
 
 <a id="other"></a>
-## Other.
+## Other
 
 <a id="reporting-issues"></a>
 ### Report issues
