@@ -188,6 +188,177 @@ def get_badging(path_to_apk):
            'version_code': version_code}
 
 
+def perform_static_analysis(badging, output, tempdir):
+    """Main SAST function.
+
+    Args:
+      badging: Aapt output.
+      output: Absolute path of report placement.
+      tempdir: Absolute path for temp files.
+
+    Returns:
+      SAST dataset.
+
+    Raises:
+      Nothing.
+    """
+    logger.debug('Entering the function: "perform_static_analysis"')
+
+    logger.info('Preparing the report...')
+
+    manifest_path = '%s/resources/AndroidManifest.xml' % (tempdir)
+    with open(manifest_path) as fd:
+        manifest = xmltodict.parse(fd.read())
+
+    data = {}
+
+    data['app_name'] = badging['app_name']
+    data['package_name'] = manifest['manifest']['@package']
+    data['version'] = badging['version']
+    data['version_code'] = badging['version_code']
+
+    cmd1 = f'keytool -printcert -file {tempdir}/resources/META-INF/*.RSA'
+    cmd2 = 'grep -Po "(?<=SHA256:) .*"'
+    cmd3 = 'xxd -r -p | openssl base64'
+    cmd4 = 'tr -- \'+/=\' \'-_\' | tr -d \'\\n\''
+    checksum_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    checksum = os.popen(checksum_cmd).read()
+    if len(checksum):
+        data['checksum'] = checksum
+    else:
+        logger.error('Error getting checksum.')
+
+    data['analysis'] = []
+    device = {}
+    device['os_build'] = ''
+
+    cmd1 = 'adb shell settings get secure android_id'
+    cmd2 = 'tr -d \'\\n\''
+    android_id_cmd = f'{cmd1} | {cmd2}'
+    android_id = os.popen(android_id_cmd).read()
+    if len(android_id):
+        device['android_id'] = android_id
+    else:
+        logger.error('Error getting android_id.')
+
+    device['advertising_id'] = ''
+
+    cmd1 = 'adb shell service call iphonesubinfo 1'
+    cmd2 = ('awk -F"\'" \'NR>1 { gsub(/\\./,"",$2); imei=imei $2 } '
+            'END {printf imei}\'')
+    cmd3 = 'tr -d \' \\t\\n\\r\\f\''
+    imei_cmd = f'{cmd1} | {cmd2} | {cmd3}'
+    imei = os.popen(imei_cmd).read()
+    if len(imei):
+        device['imei'] = imei
+    else:
+        device['imei'] = ''
+        logger.error('Error getting imei.')
+
+    device['google_account'] = ''
+    device['wifi_ssid'] = ''
+    geo_data = {}
+    geo_data['lat'] = ''
+    geo_data['lon'] = ''
+    device['geo'] = geo_data
+
+    data['analysis'].append({
+        'device': device
+    })
+
+    static_analysis = {}
+
+    cmd1 = ('grep -r -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" '
+            f'{tempdir}/sources/')
+    cmd2 = 'sort -u'
+    urls_cmd = f'{cmd1} | {cmd2}'
+    urls = os.popen(urls_cmd).read()
+    if len(urls):
+        static_analysis['urls'] = urls.split('\n')
+    else:
+        logger.error('Error getting urls.')
+
+    cmd1 = f'grep -r -Po ".*?//\\K.*?(?=/)" {tempdir}/sources/ | sort -u'
+    domains_cmd = f'{cmd1}'
+    domains = os.popen(domains_cmd).read()
+    if len(domains):
+        static_analysis['domains'] = domains.split('\n')
+    else:
+        logger.error('Error getting domains.')
+
+    libraries_cmd = f'find {tempdir} -name *.so'
+    libraries = os.popen(libraries_cmd).read()
+    if len(libraries):
+        static_analysis['libraries'] = libraries.split('\n')
+    else:
+        logger.error('Error getting libraries.')
+
+    cmd1 = f'grep -r "public class" {tempdir}/sources/'
+    cmd2 = 'sed \'s/\\(class [^ ]*\\).*/\\1/\''
+    classes_cmd = f'{cmd1} | {cmd2}'
+    classes = os.popen(classes_cmd).read()
+    if len(classes):
+        static_analysis['classes'] = classes.split('\n')
+    else:
+        logger.error('Error getting classes.')
+
+    permissions = []
+    for item in manifest['manifest']['uses-permission']:
+        permissions.append(item['@android:name'])
+    static_analysis['permissions'] = permissions
+
+    activities = []
+    for item in manifest['manifest']['application']['activity']:
+        activities.append(item['@android:name'])
+    static_analysis['activities'] = activities
+
+    dynamic_analysis = {}
+
+    network_activity = {}
+    requests = []
+    network_activity['requests'] = requests
+
+    requested_permissions = []
+
+    dynamic_analysis['network_activity'] = network_activity
+    dynamic_analysis['requested_permissions'] = requested_permissions
+
+    data['analysis'].append({
+        'static_analysis': static_analysis,
+        'dynamic_analysis': dynamic_analysis
+    })
+
+    logger.debug('Exiting the function: "perform_static_analysis"')
+
+    return data
+
+
+def perform_dynamic_analysis(package, activity_time):
+    """Main DAST function.
+
+    Args:
+      package: Package name of apk.
+      activity_time: Application activity timer.
+
+    Returns:
+      DAST dataset.
+
+    Raises:
+      Nothing.
+    """
+
+    logger.debug('Entering the function: "perform_dynamic_analysis"')
+
+    data = {}
+    runtime_data = start_application(package)
+    activity(runtime_data['start_timestamp'], activity_time)
+    stop_application(package, runtime_data['pid'])
+
+    logger.debug('Exiting the function: "perform_dynamic_analysis"')
+
+    return data
+
+
 def install_apk(package, path_to_apk):
     """Installing the apk on a device or emulator.
 
@@ -352,13 +523,13 @@ def remove_apk(package):
     logger.debug('Exiting the function: "remove_apk"')
 
 
-def make_report(badging, output, tempdir):
+def make_report(output, sast_data, dast_data):
     """Creates a report based on the results of the analysis.
 
     Args:
       output: Absolute path of report placement.
-      path_to_apk: Absolute path of apk placement.
-      tempdir: Absolute path for temp files.
+      sast_data: A set of static analysis data.
+      dast_data: A set of dynamic analysis data.
 
     Returns:
       Nothing.
@@ -369,132 +540,8 @@ def make_report(badging, output, tempdir):
 
     logger.debug('Entering the function: "make_report"')
 
-    logger.info('Preparing the report...')
-
-    manifest_path = '%s/resources/AndroidManifest.xml' % (tempdir)
-    with open(manifest_path) as fd:
-        manifest = xmltodict.parse(fd.read())
-
-    data = {}
-
-    data['app_name'] = badging['app_name']
-    data['package_name'] = manifest['manifest']['@package']
-    data['version'] = badging['version']
-    data['version_code'] = badging['version_code']
-
-    cmd1 = f'keytool -printcert -file {tempdir}/resources/META-INF/*.RSA'
-    cmd2 = 'grep -Po "(?<=SHA256:) .*"'
-    cmd3 = 'xxd -r -p | openssl base64'
-    cmd4 = 'tr -- \'+/=\' \'-_\' | tr -d \'\\n\''
-    checksum_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
-    checksum = os.popen(checksum_cmd).read()
-    if len(checksum):
-        data['checksum'] = checksum
-    else:
-        logger.error('Error getting checksum.')
-
-    data['analysis'] = []
-    device = {}
-    device['os_build'] = ''
-
-    cmd1 = 'adb shell settings get secure android_id'
-    cmd2 = 'tr -d \'\\n\''
-    android_id_cmd = f'{cmd1} | {cmd2}'
-    android_id = os.popen(android_id_cmd).read()
-    if len(android_id):
-        device['android_id'] = android_id
-    else:
-        logger.error('Error getting android_id.')
-
-    device['advertising_id'] = ''
-
-    cmd1 = 'adb shell service call iphonesubinfo 1'
-    cmd2 = ('awk -F"\'" \'NR>1 { gsub(/\\./,"",$2); imei=imei $2 } '
-            'END {printf imei}\'')
-    cmd3 = 'tr -d \' \\t\\n\\r\\f\''
-    imei_cmd = f'{cmd1} | {cmd2} | {cmd3}'
-    imei = os.popen(imei_cmd).read()
-    if len(imei):
-        device['imei'] = imei
-    else:
-        device['imei'] = ''
-        logger.error('Error getting imei.')
-
-    device['google_account'] = ''
-    device['wifi_ssid'] = ''
-    geo_data = {}
-    geo_data['lat'] = ''
-    geo_data['lon'] = ''
-    device['geo'] = geo_data
-
-    data['analysis'].append({
-        'device': device
-    })
-
-    static_analysis = {}
-
-    cmd1 = ('grep -r -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" '
-            f'{tempdir}/sources/')
-    cmd2 = 'sort -u'
-    urls_cmd = f'{cmd1} | {cmd2}'
-    urls = os.popen(urls_cmd).read()
-    if len(urls):
-        static_analysis['urls'] = urls.split('\n')
-    else:
-        logger.error('Error getting urls.')
-
-    cmd1 = f'grep -r -Po ".*?//\\K.*?(?=/)" {tempdir}/sources/ | sort -u'
-    domains_cmd = f'{cmd1}'
-    domains = os.popen(domains_cmd).read()
-    if len(domains):
-        static_analysis['domains'] = domains.split('\n')
-    else:
-        logger.error('Error getting domains.')
-
-    libraries_cmd = f'find {tempdir} -name *.so'
-    libraries = os.popen(libraries_cmd).read()
-    if len(libraries):
-        static_analysis['libraries'] = libraries.split('\n')
-    else:
-        logger.error('Error getting libraries.')
-
-    cmd1 = f'grep -r "public class" {tempdir}/sources/'
-    cmd2 = 'sed \'s/\\(class [^ ]*\\).*/\\1/\''
-    classes_cmd = f'{cmd1} | {cmd2}'
-    classes = os.popen(classes_cmd).read()
-    if len(classes):
-        static_analysis['classes'] = classes.split('\n')
-    else:
-        logger.error('Error getting classes.')
-
-    permissions = []
-    for item in manifest['manifest']['uses-permission']:
-        permissions.append(item['@android:name'])
-    static_analysis['permissions'] = permissions
-
-    activities = []
-    for item in manifest['manifest']['application']['activity']:
-        activities.append(item['@android:name'])
-    static_analysis['activities'] = activities
-
-    dynamic_analysis = {}
-
-    network_activity = {}
-    requests = []
-    network_activity['requests'] = requests
-
-    requested_permissions = []
-
-    dynamic_analysis['network_activity'] = network_activity
-    dynamic_analysis['requested_permissions'] = requested_permissions
-
-    data['analysis'].append({
-        'static_analysis': static_analysis,
-        'dynamic_analysis': dynamic_analysis
-    })
-
     with open(output, 'w') as outfile:
-        json.dump(data, outfile, indent=4, ensure_ascii=False)
+        json.dump(sast_data, outfile, indent=4, ensure_ascii=False)
 
     logger.info('The report has been prepared: %s', output)
 
@@ -509,11 +556,10 @@ def main(path_to_apk, output, activity_time, allow_permissions,
     check_device()
     badging = get_badging(path_to_apk)
     install_apk(badging['package'], path_to_apk)
-    runtime_data = start_application(badging['package'])
-    activity(runtime_data['start_timestamp'], activity_time)
-    stop_application(badging['package'], runtime_data['pid'])
+    sast_data = perform_static_analysis(badging, output, tempdir)
+    dast_data = perform_dynamic_analysis(badging['package'], activity_time)
     remove_apk(badging['package'])
-    make_report(badging, output, tempdir)
+    make_report(output, sast_data, dast_data)
 
 
 if __name__ == '__main__':

@@ -176,27 +176,19 @@ To capture and decrypt traffic, you need to [install mitmproxy certificates on t
 <a id="usage"></a>
 ## Usage
 
-Config the config.yaml
-
-```
-- Activity:
-      activity_time: 5 # Time to activity.
-  
-- Network:
-      device_ip: 192.168.1.70 # IP of device or emulator.
-```
-
 The script also accepts some options:
 ```
 positional arguments:
-  analyze              Command to analyze.
-  PATH_TO_APK          Path to APK file.
+  analyze               Command to analyze.
+  PATH_TO_APK           Path to APK file.
 
 optional arguments:
-  -h, --help           show this help message and exit
-  --output OUTPUT      Path to report.
-  --allow_permissions  Allow to any permissions requests.
-  --verbose            Produces debugging output.
+  -h, --help            show this help message and exit
+  --output OUTPUT       Path to report.
+  --activity_time ACTIVITY_TIME
+                        Time to activity.
+  --allow_permissions   Allow to any permissions requests.
+  --verbose             Produces debugging output.
 ```
 
 #### Run on local Linux
