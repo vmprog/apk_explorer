@@ -188,7 +188,7 @@ def get_badging(path_to_apk):
            'version_code': version_code}
 
 
-def perform_static_analysis(badging, output, tempdir):
+def perform_static_analysis(badging, tempdir):
     """Main SAST function.
 
     Args:
@@ -312,20 +312,8 @@ def perform_static_analysis(badging, output, tempdir):
         activities.append(item['@android:name'])
     static_analysis['activities'] = activities
 
-    dynamic_analysis = {}
-
-    network_activity = {}
-    requests = []
-    network_activity['requests'] = requests
-
-    requested_permissions = []
-
-    dynamic_analysis['network_activity'] = network_activity
-    dynamic_analysis['requested_permissions'] = requested_permissions
-
     data['analysis'].append({
-        'static_analysis': static_analysis,
-        'dynamic_analysis': dynamic_analysis
+        'static_analysis': static_analysis
     })
 
     logger.debug('Exiting the function: "perform_static_analysis"')
@@ -333,7 +321,118 @@ def perform_static_analysis(badging, output, tempdir):
     return data
 
 
-def perform_dynamic_analysis(package, activity_time):
+def get_uid(package):
+    """Retrieves the UID of the application user.
+
+    Args:
+      package: Package name of apk.
+
+    Returns:
+      uid: UID of the application user.
+
+    Raises:
+      SystemExit: If error getting the uid.
+    """
+
+    logger.debug('Entering the function: "get_uid"')
+
+    get_uid_cmd = (f'adb shell dumpsys package {package} '
+                   '| grep -o "userId=\\S*"')
+    uid = os.popen(get_uid_cmd).read()
+    uid = uid[uid.index('=')+1:-1]
+    if uid:
+        logger.info('The application uid is: %s', uid)
+    else:
+        logger.error('Error getting the uid!')
+        raise SystemExit(1)
+
+    logger.debug('Exiting the function: "get_uid"')
+
+    return uid
+
+
+def is_magisk():
+    """Checking the use of magisk.
+
+    Args:
+      Nothing.
+
+    Returns:
+      bool: True if magisk used.
+
+    Raises:
+      Nothing.
+    """
+
+    logger.debug('Entering the function: "is_magisk"')
+
+    get_magisk = 'adb shell pm list packages | grep magisk'
+    magisk = os.popen(get_magisk).read()
+
+    logger.debug('Exiting the function: "is_magisk"')
+
+    return bool(magisk)
+
+
+def set_iptables(uid, magisk, device_ip, su_pass):
+    """Configuring iptables for host and device.
+
+    Args:
+      Nothing.
+
+    Returns:
+      bool: True if magisk used.
+
+    Raises:
+      Device setup error.
+    """
+
+    logger.debug('Entering the function: "set_iptables"')
+
+    # Setup device
+    if magisk:
+        dev_drop = 'adb shell su -c "iptables -P OUTPUT DROP"'
+        dev_accept = 'adb shell su -c "iptables -P OUTPUT ACCEPT '\
+            '-m owner --uid-owner '+uid+'"'
+    else:
+        dev_drop = 'adb shell "su 0 iptables -P OUTPUT DROP"'
+        dev_accept = 'adb shell "su 0 iptables -P OUTPUT ACCEPT '\
+            '-m owner --uid-owner '+uid+'"'
+    ret_drop = os.popen(dev_drop).read()
+    ret_accept = os.popen(dev_accept).read()
+    if ret_drop or ret_accept:
+        error_str = f'Device setup error! {ret_drop} {ret_accept}'
+        logger.error(error_str)
+        raise SystemExit(1)
+
+    # Setup host
+    ipt1_host = 'echo '+su_pass+' | sudo -S iptables -t nat -F'
+    ret_ipt1 = os.popen(ipt1_host).read()
+    ipt2_host = 'echo '+su_pass+' | sudo -S sysctl -w '\
+        'net.ipv4.ip_forward=1'
+    ret_ipt2 = os.popen(ipt2_host).read()
+    ipt3_host = 'echo '+su_pass+' | sudo sysctl -w '\
+        'net.ipv6.conf.all.forwarding=1'
+    ret_ipt3 = os.popen(ipt3_host).read()
+    ipt4_host = 'echo '+su_pass+' | sudo sysctl -w '\
+        'net.ipv4.conf.all.send_redirects=0'
+    ret_ipt4 = os.popen(ipt4_host).read()
+
+    ipt5_host = 'echo '+su_pass + \
+        ' | sudo iptables -t nat -A PREROUTING -s '+device_ip + \
+        ' -p tcp -j REDIRECT --to-port 8080'
+    ret_ipt5 = os.popen(ipt5_host).read()
+
+    if ret_ipt1 or ret_ipt2 or ret_ipt3 or ret_ipt4 or ret_ipt5:
+        error_str = (f'Host setup error! {ret_ipt1} {ret_ipt2} {ret_ipt3} '
+                     '{ret_ipt4} {ret_ipt5}')
+        logger.error(error_str)
+        raise SystemExit(1)
+
+    logger.debug('Exiting the function: "set_iptables"')
+
+
+def perform_dynamic_analysis(data, package, activity_time, device_ip, su_pass):
     """Main DAST function.
 
     Args:
@@ -349,10 +448,24 @@ def perform_dynamic_analysis(package, activity_time):
 
     logger.debug('Entering the function: "perform_dynamic_analysis"')
 
-    data = {}
+    uid = get_uid(package)
+    magisk = is_magisk()
+
+    set_iptables(uid, magisk, device_ip, su_pass)
     runtime_data = start_application(package)
     activity(runtime_data['start_timestamp'], activity_time)
     stop_application(package, runtime_data['pid'])
+
+    dynamic_analysis = {}
+    network_activity = {}
+    requests = []
+    network_activity['requests'] = requests
+    requested_permissions = []
+    dynamic_analysis['network_activity'] = network_activity
+    dynamic_analysis['requested_permissions'] = requested_permissions
+    data['analysis'].append({
+        'dynamic_analysis': dynamic_analysis
+    })
 
     logger.debug('Exiting the function: "perform_dynamic_analysis"')
 
@@ -523,7 +636,7 @@ def remove_apk(package):
     logger.debug('Exiting the function: "remove_apk"')
 
 
-def make_report(output, sast_data, dast_data):
+def make_report(output, report_data):
     """Creates a report based on the results of the analysis.
 
     Args:
@@ -541,25 +654,26 @@ def make_report(output, sast_data, dast_data):
     logger.debug('Entering the function: "make_report"')
 
     with open(output, 'w') as outfile:
-        json.dump(sast_data, outfile, indent=4, ensure_ascii=False)
+        json.dump(report_data, outfile, indent=4, ensure_ascii=False)
 
     logger.info('The report has been prepared: %s', output)
 
     logger.debug('Exiting the function: "make_report"')
 
 
-def main(path_to_apk, output, activity_time, allow_permissions,
-         tempdir):
+def main(path_to_apk, device_ip, su_pass, output, activity_time,
+         allow_permissions, tempdir):
 
     check_command_line(path_to_apk, output)
     start_jadx(path_to_apk, tempdir)
     check_device()
     badging = get_badging(path_to_apk)
     install_apk(badging['package'], path_to_apk)
-    sast_data = perform_static_analysis(badging, output, tempdir)
-    dast_data = perform_dynamic_analysis(badging['package'], activity_time)
+    report_data = perform_static_analysis(badging, tempdir)
+    report_data = perform_dynamic_analysis(report_data, badging['package'],
+                                           activity_time, device_ip, su_pass)
     remove_apk(badging['package'])
-    make_report(output, sast_data, dast_data)
+    make_report(output, report_data)
 
 
 if __name__ == '__main__':
@@ -576,6 +690,9 @@ if __name__ == '__main__':
 
         parser.add_argument('analyze', help='Command to analyze.')
         parser.add_argument('PATH_TO_APK', help='Path to APK file.')
+        parser.add_argument('device_ip', help='IP address of the device or '
+                            'emulator.')
+        parser.add_argument('su_pass', help='Superuser password.')
         parser.add_argument('--output', type=str, default=default_output,
                             help='Path to report.')
         parser.add_argument('--activity_time', type=int, default=5,
@@ -592,5 +709,5 @@ if __name__ == '__main__':
         if args.verbose:
             logger.setLevel(logging.DEBUG)
 
-        main(args.PATH_TO_APK, args.output, args.activity_time,
-             args.allow_permissions, app_tempdir)
+        main(args.PATH_TO_APK, args.device_ip, args.su_pass, args.output,
+             args.activity_time, args.allow_permissions, app_tempdir)
