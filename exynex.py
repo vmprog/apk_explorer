@@ -150,7 +150,7 @@ def get_badging(path_to_apk):
 
     awk_cmd = 'awk \'/package/{gsub("name=|\'"\'"\'",""); printf $2}\''
     package_cmd = f'echo "{badging}" | {awk_cmd}'
-    logger.info('Getting the package name!')
+    logger.info('Getting the package name.')
     package = os.popen(package_cmd).read()
     if not package:
         logger.error('Error getting the package name!')
@@ -203,8 +203,6 @@ def perform_static_analysis(badging, tempdir):
       Nothing.
     """
     logger.debug('Entering the function: "perform_static_analysis"')
-
-    logger.info('Preparing the report...')
 
     manifest_path = '%s/resources/AndroidManifest.xml' % (tempdir)
     with open(manifest_path) as fd:
@@ -414,22 +412,21 @@ def set_iptables(uid, magisk, device_ip, su_pass):
     ret_ipt1 = os.popen(ipt1_host).read()
     ipt2_host = (f'echo {su_pass} | sudo -S sysctl -w '
                  'net.ipv4.ip_forward=1')
-    ret_ipt2 = os.popen(ipt2_host).read()
-    ipt3_host = (f'echo {su_pass} | sudo sysctl -w '
+    os.popen(ipt2_host).read()
+    ipt3_host = (f'echo {su_pass} | sudo -S sysctl -w '
                  'net.ipv6.conf.all.forwarding=1')
-    ret_ipt3 = os.popen(ipt3_host).read()
-    ipt4_host = (f'echo {su_pass} | sudo sysctl -w '
+    os.popen(ipt3_host).read()
+    ipt4_host = (f'echo {su_pass} | sudo -S sysctl -w '
                  'net.ipv4.conf.all.send_redirects=0')
-    ret_ipt4 = os.popen(ipt4_host).read()
+    os.popen(ipt4_host).read()
 
     ipt5_host = (f'echo {su_pass} | '
-                 f'sudo iptables -t nat -A PREROUTING -s {device_ip} '
+                 f'sudo -S iptables -t nat -A PREROUTING -s {device_ip} '
                  '-p tcp -j REDIRECT --to-port 8080')
     ret_ipt5 = os.popen(ipt5_host).read()
 
-    if ret_ipt1 or ret_ipt2 or ret_ipt3 or ret_ipt4 or ret_ipt5:
-        error_str = (f'Host setup error! {ret_ipt1} {ret_ipt2} {ret_ipt3} '
-                     '{ret_ipt4} {ret_ipt5}')
+    if ret_ipt1 or ret_ipt5:
+        error_str = f'Host setup error! {ret_ipt1} {ret_ipt5}'
         logger.error(error_str)
         raise SystemExit(1)
 
@@ -476,11 +473,10 @@ def unset_iptables(su_pass, magisk):
     logger.debug('Exiting the function: "unset_iptables"')
 
 
-def start_mitm(su_pass, package, tempdir):
+def start_mitm(package, tempdir):
     """Running mitmdump in transparent mode.
 
     Args:
-      su_pass: SU password.
       package: Package name of apk.
       tempdir: Absolute path for temp files.
 
@@ -493,26 +489,34 @@ def start_mitm(su_pass, package, tempdir):
 
     logger.debug('Entering the function: "start_mitm"')
 
-    mitm_cmd = (f'echo {su_pass} |'
-                'sudo -u mitmproxyuser -H bash -c '
-                '/usr/bin/mitmdump --mode transparent --showhost '
-                '--set block_global=false '
+    mitm_cmd = ('mitmdump --mode transparent --showhost '
                 f'-w {tempdir}/{package}.trf')
 
     print(f'Starting the mitm: {mitm_cmd}')
 
     logger.info('Starting the mitmdump: %r !', mitm_cmd)
 
-    process = None
-    with subprocess.Popen(mitm_cmd, shell=True,
-                          stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE) as process:
-        result = process.stdout.readlines()
+    if logger.root.level == logging.DEBUG:
+        stdout_mitm = None
+    else:
+        stdout_mitm = subprocess.PIPE
 
-        if not result:
-            err = process.stderr.readlines()
-            logger.error('Mitmdump startup error: %err !', err)
-            raise SystemExit(1)
+    mitm_cmd = ['mitmdump', '--mode transparent', '--showhost',
+                f'-w {tempdir}/{package}.trf']
+
+    # process = subprocess.Popen(mitm_cmd, shell=True,
+    #                           stdout=stdout_mitm,
+    #                           stderr=subprocess.PIPE,
+    #                           preexec_fn=os.setsid)
+
+    process = subprocess.Popen(mitm_cmd, shell=False,
+                               stdout=stdout_mitm,
+                               stderr=subprocess.PIPE)
+
+    retcode = process.returncode
+    if bool(retcode):
+        logger.error('Mitmdump startup error: %err !', retcode)
+        raise SystemExit(1)
 
     logger.debug('Exiting the function: "start_mitm"')
     return process
@@ -539,11 +543,14 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     magisk = is_magisk()
 
     set_iptables(uid, magisk, device_ip, su_pass)
-    mitm_process = start_mitm(su_pass, package, tempdir)
+    mitm_process = start_mitm(package, tempdir)
     runtime_data = start_application(package)
     activity(runtime_data['start_timestamp'], activity_time)
     stop_application(package, runtime_data['pid'])
-    mitm_process.kill()
+    # mitm_process.kill()
+    # os.killpg(os.getpgid(mitm_process.pid), signal.SIGTERM)
+    # mitm_process.send_signal(signal.CTRL_C_EVENT)
+    os.system(f'pkill -TERM -P {mitm_process.pid}')
     unset_iptables(su_pass, magisk)
 
     # Preparing a data set.
@@ -654,9 +661,6 @@ def activity(start_timestamp, activity_time):
 
     logger.info('Start of activities: %s sec.', activity_time)
 
-    # TODO: Activity 1
-    # TODO: Activity 2
-
     now = datetime.now()
     now_timestamp = datetime.timestamp(now)
     passed_time = now_timestamp - start_timestamp
@@ -743,6 +747,8 @@ def make_report(output, report_data):
     """
 
     logger.debug('Entering the function: "make_report"')
+
+    logger.info('Preparing the report...')
 
     with open(output, 'w') as outfile:
         json.dump(report_data, outfile, indent=4, ensure_ascii=False)
