@@ -181,6 +181,8 @@ The script also accepts some options:
 positional arguments:
   analyze               Command to analyze.
   PATH_TO_APK           Path to APK file.
+  device_ip             IP address of the device or emulator.
+  su_pass               Superuser password.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -193,7 +195,7 @@ optional arguments:
 
 #### Run on local Linux
 ```
-python3 -O exynex.py analyze some.apk --allow_permissions
+python3 -O exynex.py analyze some.apk 192.168.1.5 SUpass --allow_permissions --verbose
 ```
 
 #### Run on Docker
@@ -210,7 +212,7 @@ python-img:5.1 /bin/bash
  >**Note:** Where /folder/with/apk - is the folder on host where the apk file for research is located.
 
 ```
-python3 -O exynex.py analyze ~/APK/some.apk --allow_permissions
+python3 -O exynex.py analyze ~/APK/some.apk 192.168.1.5 SUpass --allow_permissions --verbose
 ```
 
 <a id="other"></a>

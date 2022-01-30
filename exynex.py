@@ -90,7 +90,8 @@ def start_jadx(path_to_apk, tempdir):
         jadx = f'jadx {path_to_apk} -d {tempdir}'
         logger.info('Starting Jadx: %s', jadx)
         try:
-            os.popen(jadx).read()
+            jadx_output = os.popen(jadx).read()
+            logger.debug(jadx_output)
         except OSError as error_jd:
             logger.warning('Jadx runtime error (reason: %r):',
                            error_jd)
@@ -116,6 +117,7 @@ def check_device():
 
     get_devices = 'adb devices | grep device$'
     ret_val = os.popen(get_devices).read()
+    logger.debug(ret_val)
     if not ret_val:
         logger.error('Error checking devices!: %s', ret_val)
         raise SystemExit(1)
@@ -144,6 +146,7 @@ def get_badging(path_to_apk):
 
     get_badging_cmd = f'aapt dump badging {path_to_apk}'
     badging = os.popen(get_badging_cmd).read()
+    logger.debug(badging)
     if not badging:
         logger.error('Error getting the badging.')
         raise SystemExit(1)
@@ -152,6 +155,7 @@ def get_badging(path_to_apk):
     package_cmd = f'echo "{badging}" | {awk_cmd}'
     logger.info('Getting the package name.')
     package = os.popen(package_cmd).read()
+    logger.debug(package)
     if not package:
         logger.error('Error getting the package name!')
         raise SystemExit(1)
@@ -160,6 +164,7 @@ def get_badging(path_to_apk):
     app_name_cmd = f'echo "{badging}" | {cmd}'
     logger.info('Getting the application name.')
     app_name = os.popen(app_name_cmd).read()
+    logger.debug(app_name)
     if not app_name:
         logger.error('Error getting the application name!')
         raise SystemExit(1)
@@ -169,6 +174,7 @@ def get_badging(path_to_apk):
     version_cmd = f'echo "{badging}" | {cmd1} | {cmd2}'
     logger.info('Getting the version.')
     version = os.popen(version_cmd).read()
+    logger.debug(version)
     if not version:
         logger.error('Error getting the version!')
         raise SystemExit(1)
@@ -178,6 +184,7 @@ def get_badging(path_to_apk):
     version_code_cmd = f'echo "{badging}" | {cmd1} | {cmd2}'
     logger.info('Getting the version_code.')
     version_code = os.popen(version_code_cmd).read()
+    logger.debug(version_code)
     if not version_code:
         logger.error('Error getting the version_code!')
         raise SystemExit(1)
@@ -221,6 +228,7 @@ def perform_static_analysis(badging, tempdir):
     cmd4 = 'tr -- \'+/=\' \'-_\' | tr -d \'\\n\''
     checksum_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
     checksum = os.popen(checksum_cmd).read()
+    logger.debug(checksum)
     if len(checksum):
         data['checksum'] = checksum
     else:
@@ -234,6 +242,7 @@ def perform_static_analysis(badging, tempdir):
     cmd2 = 'tr -d \'\\n\''
     android_id_cmd = f'{cmd1} | {cmd2}'
     android_id = os.popen(android_id_cmd).read()
+    logger.debug(android_id)
     if len(android_id):
         device['android_id'] = android_id
     else:
@@ -247,6 +256,7 @@ def perform_static_analysis(badging, tempdir):
     cmd3 = 'tr -d \' \\t\\n\\r\\f\''
     imei_cmd = f'{cmd1} | {cmd2} | {cmd3}'
     imei = os.popen(imei_cmd).read()
+    logger.debug(imei)
     if len(imei):
         device['imei'] = imei
     else:
@@ -271,6 +281,7 @@ def perform_static_analysis(badging, tempdir):
     cmd2 = 'sort -u'
     urls_cmd = f'{cmd1} | {cmd2}'
     urls = os.popen(urls_cmd).read()
+    logger.debug(urls)
     if len(urls):
         static_analysis['urls'] = urls.split('\n')
     else:
@@ -279,6 +290,7 @@ def perform_static_analysis(badging, tempdir):
     cmd1 = f'grep -r -Po ".*?//\\K.*?(?=/)" {tempdir}/sources/ | sort -u'
     domains_cmd = f'{cmd1}'
     domains = os.popen(domains_cmd).read()
+    logger.debug(domains)
     if len(domains):
         static_analysis['domains'] = domains.split('\n')
     else:
@@ -286,6 +298,7 @@ def perform_static_analysis(badging, tempdir):
 
     libraries_cmd = f'find {tempdir} -name *.so'
     libraries = os.popen(libraries_cmd).read()
+    logger.debug(libraries)
     if len(libraries):
         static_analysis['libraries'] = libraries.split('\n')
     else:
@@ -295,6 +308,7 @@ def perform_static_analysis(badging, tempdir):
     cmd2 = 'sed \'s/\\(class [^ ]*\\).*/\\1/\''
     classes_cmd = f'{cmd1} | {cmd2}'
     classes = os.popen(classes_cmd).read()
+    logger.debug(classes)
     if len(classes):
         static_analysis['classes'] = classes.split('\n')
     else:
@@ -306,8 +320,12 @@ def perform_static_analysis(badging, tempdir):
     static_analysis['permissions'] = permissions
 
     activities = []
-    for item in manifest['manifest']['application']['activity']:
-        activities.append(item['@android:name'])
+    man_activities = manifest['manifest']['application']['activity']
+    if isinstance(man_activities, list):
+        for item in man_activities:
+            activities.append(item['@android:name'])
+    else:
+        activities.append(man_activities['@android:name'])
     static_analysis['activities'] = activities
 
     data['analysis'].append({
@@ -337,6 +355,7 @@ def get_uid(package):
     get_uid_cmd = (f'adb shell dumpsys package {package} '
                    '| grep -o "userId=\\S*"')
     uid = os.popen(get_uid_cmd).read()
+    logger.debug(uid)
     uid = uid[uid.index('=')+1:-1]
     if uid:
         logger.info('The application uid is: %s', uid)
@@ -366,7 +385,7 @@ def is_magisk():
 
     get_magisk = 'adb shell pm list packages | grep magisk'
     magisk = os.popen(get_magisk).read()
-
+    logger.debug(magisk)
     logger.debug('Exiting the function: "is_magisk"')
 
     return bool(magisk)
@@ -401,7 +420,9 @@ def set_iptables(uid, magisk, device_ip, su_pass):
         dev_accept = ('adb shell "su 0 iptables -P OUTPUT ACCEPT '
                       f'-m owner --uid-owner {uid}"')
     ret_drop = os.popen(dev_drop).read()
+    logger.debug(ret_drop)
     ret_accept = os.popen(dev_accept).read()
+    logger.debug(ret_accept)
     if ret_drop or ret_accept:
         error_str = f'Device setup error! {ret_drop} {ret_accept}'
         logger.error(error_str)
@@ -410,20 +431,25 @@ def set_iptables(uid, magisk, device_ip, su_pass):
     # Setup host
     ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
     ret_ipt1 = os.popen(ipt1_host).read()
+    logger.debug(ret_ipt1)
     ipt2_host = (f'echo {su_pass} | sudo -S sysctl -w '
                  'net.ipv4.ip_forward=1')
-    os.popen(ipt2_host).read()
+    ret_ipt2 = os.popen(ipt2_host).read()
+    logger.debug(ret_ipt2)
     ipt3_host = (f'echo {su_pass} | sudo -S sysctl -w '
                  'net.ipv6.conf.all.forwarding=1')
-    os.popen(ipt3_host).read()
+    ret_ipt3 = os.popen(ipt3_host).read()
+    logger.debug(ret_ipt3)
     ipt4_host = (f'echo {su_pass} | sudo -S sysctl -w '
                  'net.ipv4.conf.all.send_redirects=0')
-    os.popen(ipt4_host).read()
+    ret_ipt4 = os.popen(ipt4_host).read()
+    logger.debug(ret_ipt4)
 
     ipt5_host = (f'echo {su_pass} | '
                  f'sudo -S iptables -t nat -A PREROUTING -s {device_ip} '
                  '-p tcp -j REDIRECT --to-port 8080')
     ret_ipt5 = os.popen(ipt5_host).read()
+    logger.debug(ret_ipt5)
 
     if ret_ipt1 or ret_ipt5:
         error_str = f'Host setup error! {ret_ipt1} {ret_ipt5}'
@@ -458,7 +484,9 @@ def unset_iptables(su_pass, magisk):
         ipt2_device = 'adb shell "su 0 iptables -t nat -F"'
 
     ret_accept = os.popen(ipt1_device).read()
+    logger.debug(ret_accept)
     ret_nat = os.popen(ipt2_device).read()
+    logger.debug(ret_nat)
     if ret_accept or ret_nat:
         err = f'Device iptables unset error: {ret_accept} {ret_nat}!'
         logger.error(err)
@@ -466,6 +494,7 @@ def unset_iptables(su_pass, magisk):
 
     ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
     ret_nat = os.popen(ipt1_host).read()
+    logger.debug(ret_nat)
     if ret_nat:
         logger.error('Host iptables unset error! %ret_nat !', ret_nat)
         raise SystemExit(1)
@@ -473,53 +502,72 @@ def unset_iptables(su_pass, magisk):
     logger.debug('Exiting the function: "unset_iptables"')
 
 
-def start_mitm(package, tempdir):
+def start_mitm(tempdir):
     """Running mitmdump in transparent mode.
 
     Args:
       package: Package name of apk.
-      tempdir: Absolute path for temp files.
 
     Returns:
       process: Mitmdump process.
 
     Raises:
       SystemExit: If mitmdump startup error.
+
     """
 
     logger.debug('Entering the function: "start_mitm"')
 
-    mitm_cmd = ('mitmdump --mode transparent --showhost '
-                f'-w {tempdir}/{package}.trf')
+    if logger.root.level == logging.DEBUG:
 
-    print(f'Starting the mitm: {mitm_cmd}')
+        stdout_mitm = None
+
+    else:
+
+        stdout_mitm = subprocess.PIPE
+
+    start_ts = datetime.timestamp(datetime.now())
+
+    mitm_cmd = ('mitmdump --mode transparent --showhost'
+                ' -s har_dump.py'
+                f' --set hardump={tempdir}/dump.har'
+                f' --set timestamp={start_ts}')
 
     logger.info('Starting the mitmdump: %r !', mitm_cmd)
 
-    if logger.root.level == logging.DEBUG:
-        stdout_mitm = None
-    else:
-        stdout_mitm = subprocess.PIPE
-
-    mitm_cmd = ['mitmdump', '--mode transparent', '--showhost',
-                f'-w {tempdir}/{package}.trf']
-
-    # process = subprocess.Popen(mitm_cmd, shell=True,
-    #                           stdout=stdout_mitm,
-    #                           stderr=subprocess.PIPE,
-    #                           preexec_fn=os.setsid)
-
-    process = subprocess.Popen(mitm_cmd, shell=False,
+    process = subprocess.Popen(mitm_cmd, shell=True,
                                stdout=stdout_mitm,
                                stderr=subprocess.PIPE)
 
+    time.sleep(5)
     retcode = process.returncode
     if bool(retcode):
         logger.error('Mitmdump startup error: %err !', retcode)
         raise SystemExit(1)
 
     logger.debug('Exiting the function: "start_mitm"')
+
     return process
+
+
+def stop_mitm(mitm_process):
+    """Stopping mitmdump.
+
+    Args:
+      mitm_process: The mitmdump handler.
+
+    Returns:
+      Nothing.
+
+    Raises:
+      Nothing.
+    """
+
+    logger.debug('Entering the function: "stop_mitm"')
+
+    os.system(f'pkill -TERM -P {mitm_process.pid}')
+
+    logger.debug('Exiting the function: "stop_mitm"')
 
 
 def perform_dynamic_analysis(data, package, activity_time, device_ip,
@@ -543,21 +591,17 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     magisk = is_magisk()
 
     set_iptables(uid, magisk, device_ip, su_pass)
-    mitm_process = start_mitm(package, tempdir)
+    mitm_process = start_mitm(tempdir)
     runtime_data = start_application(package)
     activity(runtime_data['start_timestamp'], activity_time)
     stop_application(package, runtime_data['pid'])
-    # mitm_process.kill()
-    # os.killpg(os.getpgid(mitm_process.pid), signal.SIGTERM)
-    # mitm_process.send_signal(signal.CTRL_C_EVENT)
-    os.system(f'pkill -TERM -P {mitm_process.pid}')
+    stop_mitm(mitm_process)
     unset_iptables(su_pass, magisk)
 
     # Preparing a data set.
     dynamic_analysis = {}
-    network_activity = {}
-    requests = []
-    network_activity['requests'] = requests
+    with open(f'{tempdir}/dump.har') as har:
+        network_activity = json.load(har)
     requested_permissions = []
     dynamic_analysis['network_activity'] = network_activity
     dynamic_analysis['requested_permissions'] = requested_permissions
@@ -588,11 +632,13 @@ def install_apk(package, path_to_apk):
     get_install_status = f'adb shell pm list packages | grep {package}'
     logger.info('Getting package status: %s', get_install_status)
     package_presents = os.popen(get_install_status).read()
+    logger.debug(package_presents)
     if not package_presents:
         logger.info('The package %s is not installed.', package)
         install_package = f'adb install {path_to_apk}'
         logger.info('Installing the APK: %s', path_to_apk)
         installaation = os.popen(install_package).read()
+        logger.debug(installaation)
         if 'Success' in installaation:
             logger.info('The apk is installed: %s', path_to_apk)
         else:
@@ -623,13 +669,26 @@ def start_application(package):
     start_app_w = (f'adb shell monkey -p {package} -c '
                    'android.intent.category.LAUNCHER 1')
     logger.info('Starting the package: %s', start_app_w)
+
+    if logger.root.level == logging.DEBUG:
+        stdout_monkey = None
+    else:
+        stdout_monkey = subprocess.PIPE
+
     # proc = subprocess.Popen(start_app_w, shell=True)
-    with subprocess.Popen(start_app_w, shell=True) as proc:
+    with subprocess.Popen(start_app_w, shell=True,
+                          stdout=stdout_monkey,
+                          stderr=subprocess.PIPE) as proc:
+
+        # retcode = proc.returncode
         pid = str(proc.pid)
         proc.wait()
+    # if bool(retcode):)
+
     get_running_status = f'adb shell ps | grep {package}'
     logger.info('Getting the application status: %s', package)
     app_status = os.popen(get_running_status).read()
+    logger.debug(app_status)
     if len(app_status):
         logger.info('The app is running: %s', package)
     else:
@@ -691,15 +750,17 @@ def stop_application(package, pid):
 
     stop_app = f'adb shell am force-stop {package}'
     logger.info('Stopping the app: %s', package)
-    os.popen(stop_app).read()
+    ret_stop = os.popen(stop_app).read()
+    logger.debug(ret_stop)
 
     check_app = f'adb shell ps -p {pid} | grep {pid}'
     app_status = os.popen(check_app).read()
+    logger.debug(app_status)
     if not app_status:
         logger.info('The application is stopped: %s', package)
     else:
         logger.error('Error stopping the application!: %s', package)
-        raise SystemExit(1)
+        # raise SystemExit(1)
 
     logger.debug('Exiting the function: "stop_app"')
 
@@ -722,6 +783,7 @@ def remove_apk(package):
     uninstall_package = f'adb shell pm uninstall {package}'
     logger.info('Uninstalling the package: %s', uninstall_package)
     result = os.popen(uninstall_package).read()
+    logger.debug(result)
     if 'Success' in result:
         logger.info('The apk is uninstalled: %s', package)
     else:
@@ -736,8 +798,7 @@ def make_report(output, report_data):
 
     Args:
       output: Absolute path of report placement.
-      sast_data: A set of static analysis data.
-      dast_data: A set of dynamic analysis data.
+      report_data: A set of analysis data.
 
     Returns:
       Nothing.
@@ -780,7 +841,7 @@ if __name__ == '__main__':
         if __debug__:
             app_tempdir = './research'
         logger.info('The temp directory is %s', app_tempdir)
-        default_output = '%s/exynex_output.json' % (app_tempdir)
+        default_output = f'{app_tempdir}/exynex_output.json'
 
         parser = argparse.ArgumentParser(
             description=__doc__,

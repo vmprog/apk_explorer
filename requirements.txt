@@ -1,3 +1,2 @@
+mitmproxy==7.0.4
 xmltodict==0.12.0
-pynput==1.7.5
-PyYAML==6.0
