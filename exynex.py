@@ -519,11 +519,8 @@ def start_mitm(tempdir):
     logger.debug('Entering the function: "start_mitm"')
 
     if logger.root.level == logging.DEBUG:
-
         stdout_mitm = None
-
     else:
-
         stdout_mitm = subprocess.PIPE
 
     start_ts = datetime.timestamp(datetime.now())
