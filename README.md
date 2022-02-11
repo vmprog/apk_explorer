@@ -63,7 +63,7 @@
 ## Getting Started
 
 ```
-git clone https://github.com/vmprog/apk_explorer
+git clone https://github.com/vmprog/exynex.git
 ```
 
 The use of the utility is possible in two ways:
