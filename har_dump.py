@@ -10,7 +10,6 @@ mitmdump -s ./har_dump.py --set hardump=./dump.zhar
 
 
 import json
-import base64
 import zlib
 import os
 import typing  # noqa
@@ -21,16 +20,37 @@ from datetime import timezone
 import mitmproxy
 
 from mitmproxy import connection
-from mitmproxy import version
 from mitmproxy import ctx
-from mitmproxy.utils import strutils
-from mitmproxy.net.http import cookies
 
 HAR: typing.Dict = {}
 
 # A list of server seen till now is maintained so we can avoid
 # using 'connect' time for entries that use an existing connection.
 SERVERS_SEEN: typing.Set[connection.Server] = set()
+
+
+def tls_clienthello(data: mitmproxy.proxy.layers.tls.ClientHelloData):
+
+    #print(f'SNI: {data.context.client.sni}')
+    #ctx.log(f"tls_clienthello: {data=}")
+    tdelta = (float(datetime.timestamp(datetime.now())) -
+              float(ctx.options.timestamp)) * 1000
+
+    entry = {
+        "request": {
+            "timestamp": round(tdelta),
+            "proto": "tls",
+            "remote_ip": f'{data.context.server.address[0]}:{data.context.server.address[1]}',
+            "tls_sni": data.context.client.sni,
+            "http_request_url": "",
+            "http_request_method": "",
+            "http_request_body_length": "",
+            "http_response_status": "",
+            "http_response_body_length": "",
+        },
+    }
+
+    HAR["requests"].append(entry)
 
 
 def load(l):
