@@ -236,7 +236,16 @@ def perform_static_analysis(badging, tempdir):
 
     data['analysis'] = []
     device = {}
-    device['os_build'] = ''
+
+    cmd1 = 'adb shell getprop | grep product'
+    cmd2 = 'sort -u'
+    os_build_cmd = f'{cmd1} | {cmd2}'
+    os_build = os.popen(os_build_cmd).read()
+    logger.debug(os_build)
+    if len(os_build):
+        device['os_build'] = os_build.split('\n')
+    else:
+        logger.error('Error getting os_build.')
 
     cmd1 = 'adb shell settings get secure android_id'
     cmd2 = 'tr -d \'\\n\''
@@ -248,7 +257,19 @@ def perform_static_analysis(badging, tempdir):
     else:
         logger.error('Error getting android_id.')
 
-    device['advertising_id'] = ''
+    cmd1 = ('adb shell su -c grep adid_key /data/data/com.google.android.gms'
+            '/shared_prefs/adid_settings.xml')
+    cmd2 = 'grep "<string name=\\"adid_key\\">"'
+    cmd3 = 'sed \'s/<string name="adid_key">\\(.*\\)<\\/string>/\\1/\''
+    cmd4 = 'awk \'{$1=$1};1\''
+    cmd5 = 'tr -d \'\\n\''
+    advertising_id_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4} | {cmd5}'
+    advertising_id = os.popen(advertising_id_cmd).read()
+    logger.debug(advertising_id)
+    if len(advertising_id):
+        device['advertising_id'] = advertising_id
+    else:
+        logger.error('Error getting advertising_id.')
 
     cmd1 = 'adb shell service call iphonesubinfo 1'
     cmd2 = ('awk -F"\'" \'NR>1 { gsub(/\\./,"",$2); imei=imei $2 } '
@@ -263,11 +284,59 @@ def perform_static_analysis(badging, tempdir):
         device['imei'] = ''
         logger.error('Error getting imei.')
 
-    device['google_account'] = ''
-    device['wifi_ssid'] = ''
+    cmd1 = 'adb shell dumpsys account | grep -o -m1 \'Account {name=[^,]*\''
+    cmd2 = 'sed \'s/Account {name=//\''
+    cmd3 = 'tr -d \' \\t\\n\\r\\f\''
+    google_account_cmd = f'{cmd1} | {cmd2} | {cmd3}'
+    google_account = os.popen(google_account_cmd).read()
+    logger.debug(google_account)
+    if len(google_account):
+        device['google_account'] = google_account
+    else:
+        device['google_account'] = ''
+        logger.error('Error getting google_account.')
+
+    cmd1 = 'adb shell dumpsys netstats'
+    cmd2 = 'grep -E -m1 -o \'iface=wlan.*networkId=\"[^"]*\''
+    cmd3 = 'grep -o \'networkId=\".*\' | sed \'s/networkId="//\''
+    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
+    wifi_ssid_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    wifi_ssid = os.popen(wifi_ssid_cmd).read()
+    logger.debug(wifi_ssid)
+    if len(imei):
+        device['wifi_ssid'] = wifi_ssid
+    else:
+        device['wifi_ssid'] = ''
+        logger.error('Error getting wifi_ssid.')
+
     geo_data = {}
-    geo_data['lat'] = ''
-    geo_data['lon'] = ''
+
+    cmd1 = 'adb shell dumpsys location'
+    cmd2 = 'grep -o -m1 \'gps: Location\\[gps [0-9]*,[0-9]*\''
+    cmd3 = 'sed \'s/gps: Location\\[gps //\''
+    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
+    lat_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    lat = os.popen(lat_cmd).read()
+    logger.debug(lat)
+    if len(lat):
+        geo_data['lat'] = lat
+    else:
+        geo_data['lat'] = ''
+        logger.error('Error getting lat.')
+
+    cmd1 = 'adb shell dumpsys location'
+    cmd2 = 'grep -o -m1 \'gps: Location\\[gps [0-9,]*\''
+    cmd3 = 'sed \'s/gps: Location\\[gps [0-9]*,[0-9]*,//\''
+    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
+    lon_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    lon = os.popen(lon_cmd).read()
+    logger.debug(lon)
+    if len(lon):
+        geo_data['lon'] = lon
+    else:
+        geo_data['lon'] = ''
+        logger.error('Error getting lon.')
+
     device['geo'] = geo_data
 
     data['analysis'].append({
@@ -276,7 +345,7 @@ def perform_static_analysis(badging, tempdir):
 
     static_analysis = {}
 
-    cmd1 = ('grep -r -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*" '
+    cmd1 = ('grep -r -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]+" '
             f'{tempdir}/sources/')
     cmd2 = 'sort -u'
     urls_cmd = f'{cmd1} | {cmd2}'

@@ -37,17 +37,15 @@ def tls_clienthello(data: mitmproxy.proxy.layers.tls.ClientHelloData):
               float(ctx.options.timestamp)) * 1000
 
     entry = {
-        "request": {
-            "timestamp": round(tdelta),
-            "proto": "tls",
-            "remote_ip": f'{data.context.server.address[0]}:{data.context.server.address[1]}',
-            "tls_sni": data.context.client.sni,
-            "http_request_url": "",
-            "http_request_method": "",
-            "http_request_body_length": "",
-            "http_response_status": "",
-            "http_response_body_length": "",
-        },
+        "timestamp": round(tdelta),
+        "proto": "tls",
+        "remote_ip": f'{data.context.server.address[0]}:{data.context.server.address[1]}',
+        "tls_sni": data.context.client.sni,
+        "http_request_url": "",
+        "http_request_method": "",
+        "http_request_body_length": "",
+        "http_response_status": "",
+        "http_response_body_length": "",
     }
 
     HAR["requests"].append(entry)
@@ -125,17 +123,15 @@ def response(flow: mitmproxy.http.HTTPFlow):
               float(ctx.options.timestamp)) * 1000
 
     entry = {
-        "request": {
-            "timestamp": round(tdelta),
-            "proto": flow.request.http_version,
-            "remote_ip": str(flow.server_conn.peername[0]),
-            "tls_sni": "",
-            "http_request_url": flow.request.url,
-            "http_request_method": flow.request.method,
-            "http_request_body_length": len(flow.request.content),
-            "http_response_status": flow.response.status_code,
-            "http_response_body_length": response_body_size,
-        },
+        "timestamp": round(tdelta),
+        "proto": flow.request.http_version,
+        "remote_ip": str(flow.server_conn.peername[0]),
+        "tls_sni": "",
+        "http_request_url": flow.request.pretty_url,
+        "http_request_method": flow.request.method,
+        "http_request_body_length": len(flow.request.content),
+        "http_response_status": flow.response.status_code,
+        "http_response_body_length": response_body_size,
     }
 
     HAR["requests"].append(entry)
