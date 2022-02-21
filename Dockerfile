@@ -37,9 +37,7 @@ USER ${user}
 WORKDIR /home/${user}/app_src
 
 RUN sudo apt-get -y install android-tools-adb && \
-    sudo useradd --create-home mitmproxyuser && \
-	sudo -u mitmproxyuser -H bash -c 'cd ~ && pip install --user mitmproxy' && \
-	sudo apt-get -y install mitmproxy && \
+    sudo apt-get -y install mitmproxy && \
     sudo apt-get -y install iptables && \
     sudo apt-get -y install procps && \
 	sudo apt-get -y install aapt && \

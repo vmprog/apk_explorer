@@ -4,8 +4,10 @@ build/
 backup/
 node_modules/
 .idea/
-jadx/
-research/*.*
+!exynex_output.json
+!dump.har
+research/resources/*.*
+research/sources/*.*
 my_notes.txt
 *.swp
 exynex.log
