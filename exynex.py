@@ -195,6 +195,52 @@ def get_badging(path_to_apk):
            'version_code': version_code}
 
 
+def get_geo():
+    """Get location.
+
+    Args:
+      Nothing.
+
+    Returns:
+      geo_data: Dictionary with geo data.
+
+    Raises:
+      Nothing.
+    """
+
+    logger.debug('Entering the function: "get_geo"')
+
+    geo_data = {}
+    cmd1 = 'adb shell dumpsys location'
+    cmd2 = 'grep -o -m1 \'Location\\[network [0-9]*,[0-9]*\' | head -1'
+    cmd3 = 'sed \'s/Location\\[network //\''
+    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
+    lat_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    lat = os.popen(lat_cmd).read()
+    logger.debug(lat)
+    if len(lat):
+        geo_data['lat'] = lat
+    else:
+        geo_data['lat'] = ''
+        logger.error('Error getting lat.')
+
+    cmd1 = 'adb shell dumpsys location'
+    cmd2 = 'grep -o -m1 \'Location\\[network [0-9,]*\' | head -1'
+    cmd3 = 'sed \'s/Location\\[network [0-9]*,[0-9]*,//\''
+    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
+    lon_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    lon = os.popen(lon_cmd).read()
+    logger.debug(lon)
+    if len(lon):
+        geo_data['lon'] = lon
+    else:
+        geo_data['lon'] = ''
+        logger.error('Error getting lon.')
+
+    logger.debug('Exiting the function: "get_geo"')
+    return geo_data
+
+
 def perform_static_analysis(badging, tempdir):
     """Main SAST function.
 
@@ -222,8 +268,8 @@ def perform_static_analysis(badging, tempdir):
     data['version'] = badging['version']
     data['version_code'] = badging['version_code']
 
-    cmd1 = f'keytool -printcert -file {tempdir}/resources/META-INF/*.RSA'
-    cmd2 = 'grep -Po "(?<=SHA256:) .*"'
+    cmd1 = f'keytool -printcert -file {tempdir}/resources/META-INF/*.*SA'
+    cmd2 = 'grep -Po "(SHA1|SHA256:) .*" -m 1'
     cmd3 = 'xxd -r -p | openssl base64'
     cmd4 = 'tr -- \'+/=\' \'-_\' | tr -d \'\\n\''
     checksum_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
@@ -308,36 +354,6 @@ def perform_static_analysis(badging, tempdir):
     else:
         device['wifi_ssid'] = ''
         logger.error('Error getting wifi_ssid.')
-
-    geo_data = {}
-
-    cmd1 = 'adb shell dumpsys location'
-    cmd2 = 'grep -o -m1 \'gps: Location\\[gps [0-9]*,[0-9]*\''
-    cmd3 = 'sed \'s/gps: Location\\[gps //\''
-    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
-    lat_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
-    lat = os.popen(lat_cmd).read()
-    logger.debug(lat)
-    if len(lat):
-        geo_data['lat'] = lat
-    else:
-        geo_data['lat'] = ''
-        logger.error('Error getting lat.')
-
-    cmd1 = 'adb shell dumpsys location'
-    cmd2 = 'grep -o -m1 \'gps: Location\\[gps [0-9,]*\''
-    cmd3 = 'sed \'s/gps: Location\\[gps [0-9]*,[0-9]*,//\''
-    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
-    lon_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
-    lon = os.popen(lon_cmd).read()
-    logger.debug(lon)
-    if len(lon):
-        geo_data['lon'] = lon
-    else:
-        geo_data['lon'] = ''
-        logger.error('Error getting lon.')
-
-    device['geo'] = geo_data
 
     data['analysis'].append({
         'device': device
@@ -609,6 +625,7 @@ def start_mitm(tempdir):
     retcode = process.returncode
     if bool(retcode):
         logger.error('Mitmdump startup error: %err !', retcode)
+        stop_mitm()
         raise SystemExit(1)
 
     logger.debug('Exiting the function: "start_mitm"')
@@ -616,11 +633,11 @@ def start_mitm(tempdir):
     return process
 
 
-def stop_mitm(mitm_process):
+def stop_mitm():
     """Stopping mitmdump.
 
     Args:
-      mitm_process: The mitmdump handler.
+      Nothing.
 
     Returns:
       Nothing.
@@ -631,7 +648,8 @@ def stop_mitm(mitm_process):
 
     logger.debug('Entering the function: "stop_mitm"')
 
-    os.system(f'pkill -TERM -P {mitm_process.pid}')
+    # os.system(f'pkill -TERM -P {mitm_process.pid}')
+    os.system('pkill -TERM mitmdump')
 
     logger.debug('Exiting the function: "stop_mitm"')
 
@@ -657,14 +675,16 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     magisk = is_magisk()
 
     set_iptables(uid, magisk, device_ip, su_pass)
-    mitm_process = start_mitm(tempdir)
+    start_mitm(tempdir)
     runtime_data = start_application(package)
     activity(runtime_data['start_timestamp'], activity_time)
+    geo = get_geo()
     stop_application(package, runtime_data['pid'])
-    stop_mitm(mitm_process)
+    stop_mitm()
     unset_iptables(su_pass, magisk)
 
     # Preparing a data set.
+    data['analysis'][0]['device']['geo'] = geo
     dynamic_analysis = {}
     with open(f'{tempdir}/dump.har') as har:
         network_activity = json.load(har)
@@ -759,6 +779,7 @@ def start_application(package):
         logger.info('The app is running: %s', package)
     else:
         logger.error('Runtime error!: %s', package)
+        stop_mitm()
         raise SystemExit(1)
 
     now = datetime.now()
@@ -826,7 +847,8 @@ def stop_application(package, pid):
         logger.info('The application is stopped: %s', package)
     else:
         logger.error('Error stopping the application!: %s', package)
-        # raise SystemExit(1)
+        stop_mitm()
+        raise SystemExit(1)
 
     logger.debug('Exiting the function: "stop_app"')
 

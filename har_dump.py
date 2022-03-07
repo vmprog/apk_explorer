@@ -8,12 +8,12 @@ filename endwith '.zhar' will be compressed:
 mitmdump -s ./har_dump.py --set hardump=./dump.zhar
 """
 
-
+import sys
 import json
 import zlib
 import os
 import typing  # noqa
-
+import logging
 from datetime import datetime
 from datetime import timezone
 
@@ -21,6 +21,21 @@ import mitmproxy
 
 from mitmproxy import connection
 from mitmproxy import ctx
+
+logger = logging.getLogger('')
+if logger.hasHandlers():
+    logger.handlers.clear()
+logger.setLevel(logging.INFO)
+fh = logging.FileHandler('har_dump.log')
+sh = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter(
+    '[%(asctime)s] %(levelname)s [%(filename)s.%(funcName)s:%(lineno)d] '
+    '%(message)s', datefmt='%a, %d %b %Y %H:%M:%S')
+fh.setFormatter(formatter)
+sh.setFormatter(formatter)
+logger.addHandler(fh)
+logger.addHandler(sh)
+logger.setLevel(logging.DEBUG)
 
 HAR: typing.Dict = {}
 
@@ -52,12 +67,14 @@ def tls_clienthello(data: mitmproxy.proxy.layers.tls.ClientHelloData):
 
 
 def load(l):
+    logger.debug('Entering the function: "load"')
     l.add_option(
         "hardump", str, "", "HAR dump path.",
     )
     l.add_option(
         "timestamp", str, "", "Time from the app startup (ms).",
     )
+    logger.debug('Exiting the function: "load"')
 
 
 def configure(updated):
@@ -141,6 +158,7 @@ def done():
     """
         Called once on script shutdown, after any other events.
     """
+    # logger.debug('Entering the function: "done"')
     if ctx.options.hardump:
         json_dump: str = json.dumps(HAR, indent=2)
 
@@ -156,6 +174,8 @@ def done():
 
             mitmproxy.ctx.log(
                 "HAR dump finished (wrote %s bytes to file)" % len(json_dump))
+
+    # logger.debug('Exiting the function: "done"')
 
 
 def name_value(obj):

@@ -162,11 +162,17 @@ mount -o ro,remount /
 
 Before using, you must change the ip address of the gateway to host ip with mitmdump.
 
-Before using, you must disable IPv6 protocol.
+Before using, you must disable IPv6 protocol on device/emulator.
+```
+adb shell
+su
+echo 0 > /proc/sys/net/ipv6/conf/wlan0/accept_ra
+echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6
+```
+
 If you are using mobile internet, you should find the following setting: Access Point Names
 ->APN protocol and set IPv4 only.
 
-If you are using WIFI, you should find the protocol selection setting in the settings menu of your access point and set IPv4 only.
 
 <a id="preparing-emulator"></a>
 ## Preparing an emulator
