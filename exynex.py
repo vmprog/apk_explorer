@@ -87,7 +87,7 @@ def start_jadx(path_to_apk, tempdir):
 
     jadx_dir = f'{tempdir}/resources'
     if not os.path.exists(jadx_dir):
-        jadx = f'jadx {path_to_apk} -d {tempdir}'
+        jadx = f'./jadx/bin/jadx {path_to_apk} -d {tempdir}'
         logger.info('Starting Jadx: %s', jadx)
         try:
             jadx_output = os.popen(jadx).read()
@@ -514,32 +514,39 @@ def set_iptables(uid, magisk, device_ip, su_pass):
         raise SystemExit(1)
 
     # Setup host
-    ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
-    ret_ipt1 = os.popen(ipt1_host).read()
-    logger.debug(ret_ipt1)
-    ipt2_host = (f'echo {su_pass} | sudo -S sysctl -w '
-                 'net.ipv4.ip_forward=1')
-    ret_ipt2 = os.popen(ipt2_host).read()
-    logger.debug(ret_ipt2)
-    ipt3_host = (f'echo {su_pass} | sudo -S sysctl -w '
-                 'net.ipv6.conf.all.forwarding=1')
-    ret_ipt3 = os.popen(ipt3_host).read()
-    logger.debug(ret_ipt3)
-    ipt4_host = (f'echo {su_pass} | sudo -S sysctl -w '
-                 'net.ipv4.conf.all.send_redirects=0')
-    ret_ipt4 = os.popen(ipt4_host).read()
-    logger.debug(ret_ipt4)
+    if sys.platform == 'linux' or sys.platform == 'linux2':
+        ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
+        ret_ipt1 = os.popen(ipt1_host).read()
+        logger.debug(ret_ipt1)
+        ipt2_host = (f'echo {su_pass} | sudo -S sysctl -w '
+                     'net.ipv4.ip_forward=1')
+        ret_ipt2 = os.popen(ipt2_host).read()
+        logger.debug(ret_ipt2)
+        ipt3_host = (f'echo {su_pass} | sudo -S sysctl -w '
+                     'net.ipv6.conf.all.forwarding=1')
+        ret_ipt3 = os.popen(ipt3_host).read()
+        logger.debug(ret_ipt3)
+        ipt4_host = (f'echo {su_pass} | sudo -S sysctl -w '
+                     'net.ipv4.conf.all.send_redirects=0')
+        ret_ipt4 = os.popen(ipt4_host).read()
+        logger.debug(ret_ipt4)
 
-    ipt5_host = (f'echo {su_pass} | '
-                 f'sudo -S iptables -t nat -A PREROUTING -s {device_ip} '
-                 '-p tcp -j REDIRECT --to-port 8080')
-    ret_ipt5 = os.popen(ipt5_host).read()
-    logger.debug(ret_ipt5)
+        ipt5_host = (f'echo {su_pass} | '
+                     f'sudo -S iptables -t nat -A PREROUTING -s {device_ip} '
+                     '-p tcp -j REDIRECT --to-port 8080')
+        ret_ipt5 = os.popen(ipt5_host).read()
+        logger.debug(ret_ipt5)
 
-    if ret_ipt1 or ret_ipt5:
-        error_str = f'Host setup error! {ret_ipt1} {ret_ipt5}'
-        logger.error(error_str)
-        raise SystemExit(1)
+        if ret_ipt1 or ret_ipt5:
+            error_str = f'Host setup error! {ret_ipt1} {ret_ipt5}'
+            logger.error(error_str)
+            raise SystemExit(1)
+
+    elif sys.platform == 'darwin':
+        ipt1_host_mac = (f'echo {su_pass} | sudo -S sysctl -w '
+                         'net.inet.ip.forwarding=1')
+        ret_ipt2 = os.popen(ipt1_host_mac).read()
+        logger.debug(ret_ipt1)
 
     logger.debug('Exiting the function: "set_iptables"')
 
