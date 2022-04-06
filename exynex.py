@@ -107,7 +107,7 @@ def check_device():
       Nothing.
 
     Returns:
-      Nothing.
+      Dict with magisk status.
 
     Raises:
       SystemExit: If the device is not connected.
@@ -123,6 +123,8 @@ def check_device():
         raise SystemExit(1)
 
     logger.debug('Exiting the function: "check_device"')
+
+    return{'magisk': is_magisk()}
 
 
 def get_badging(path_to_apk):
@@ -545,8 +547,8 @@ def set_iptables(uid, magisk, device_ip, su_pass):
     elif sys.platform == 'darwin':
         ipt1_host_mac = (f'echo {su_pass} | sudo -S sysctl -w '
                          'net.inet.ip.forwarding=1')
-        ret_ipt2 = os.popen(ipt1_host_mac).read()
-        logger.debug(ret_ipt1)
+        ret_ipt1_host_mac = os.popen(ipt1_host_mac).read()
+        logger.debug(ret_ipt1_host_mac)
 
     logger.debug('Exiting the function: "set_iptables"')
 
@@ -584,12 +586,14 @@ def unset_iptables(su_pass, magisk):
         logger.error(err)
         raise SystemExit(1)
 
-    ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
-    ret_nat = os.popen(ipt1_host).read()
-    logger.debug(ret_nat)
-    if ret_nat:
-        logger.error('Host iptables unset error! %ret_nat !', ret_nat)
-        raise SystemExit(1)
+    if sys.platform == 'linux' or sys.platform == 'linux2':
+        ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
+        ret_nat = os.popen(ipt1_host).read()
+        logger.debug(ret_nat)
+        if ret_nat:
+            logger.error('Host iptables unset error! %ret_nat !', ret_nat)
+            raise SystemExit(1)
+    # elif sys.platform == 'darwin':
 
     logger.debug('Exiting the function: "unset_iptables"')
 
@@ -656,13 +660,16 @@ def stop_mitm():
     logger.debug('Entering the function: "stop_mitm"')
 
     # os.system(f'pkill -TERM -P {mitm_process.pid}')
-    os.system('pkill -TERM mitmdump')
+    if sys.platform == 'linux' or sys.platform == 'linux2':
+        os.system('pkill -TERM mitmdump')
+    elif sys.platform == 'darwin':
+        os.system('pkill -f mitmdump')
 
     logger.debug('Exiting the function: "stop_mitm"')
 
 
 def perform_dynamic_analysis(data, package, activity_time, device_ip,
-                             su_pass, tempdir):
+                             su_pass, tempdir, magisk):
     """Main DAST function.
 
     Args:
@@ -679,7 +686,6 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     logger.debug('Entering the function: "perform_dynamic_analysis"')
 
     uid = get_uid(package)
-    magisk = is_magisk()
 
     set_iptables(uid, magisk, device_ip, su_pass)
     start_mitm(tempdir)
@@ -693,8 +699,16 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     # Preparing a data set.
     data['analysis'][0]['device']['geo'] = geo
     dynamic_analysis = {}
-    with open(f'{tempdir}/dump.har') as har:
-        network_activity = json.load(har)
+
+    network_activity = []
+    try:
+        with open(f'{tempdir}/dump.har') as har:
+            network_activity = json.load(har)
+    except IOError as error_rep:
+        logger.error(f'Error reading har.dump {error_rep}')
+    finally:
+        stop_mitm()
+
     requested_permissions = []
     dynamic_analysis['network_activity'] = network_activity
     dynamic_analysis['requested_permissions'] = requested_permissions
@@ -707,7 +721,7 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     return data
 
 
-def install_apk(package, path_to_apk):
+def install_apk(package, path_to_apk, magisk):
     """Installing the apk on a device or emulator.
 
     Args:
@@ -717,6 +731,7 @@ def install_apk(package, path_to_apk):
       Nothing.
 
     Raises:
+      SystemExit: If APK pushing to device/emulator error.
       SystemExit: If APK installation error.
     """
 
@@ -728,11 +743,43 @@ def install_apk(package, path_to_apk):
     logger.debug(package_presents)
     if not package_presents:
         logger.info('The package %s is not installed.', package)
-        install_package = f'adb install {path_to_apk}'
-        logger.info('Installing the APK: %s', path_to_apk)
-        installaation = os.popen(install_package).read()
-        logger.debug(installaation)
-        if 'Success' in installaation:
+
+        # Set SELinux to Permissive mode
+        if magisk:
+            set_selinux_cmd = 'adb shell su -c "setenforce 0"'
+        else:
+            set_selinux_cmd = 'adb shell "su 0 setenforce 0"'
+        logger.info('Setting SELinux to Permissive mode: %s', set_selinux_cmd)
+        set_selinux = os.popen(set_selinux_cmd).read()
+        logger.debug(set_selinux_cmd)
+        if set_selinux:
+            logger.error('Error with set SELinux!: %s', set_selinux)
+            raise SystemExit(1)
+
+        # Pushing APK for a silent install
+        push_apk_cmd = f'adb push {path_to_apk} /data/local/tmp'
+        logger.info('Pushing the APK: %s', push_apk_cmd)
+        push_apk = os.popen(push_apk_cmd).read()
+        logger.debug(push_apk)
+        if 'file pushed' in push_apk:
+            logger.info('The apk is pushed to device/emulator: %s', push_apk)
+        else:
+            logger.error('Error with pushing!: %s', push_apk)
+            raise SystemExit(1)
+
+        # install_package = f'adb install {path_to_apk}'
+        apk = os.path.basename(path_to_apk)
+        if magisk:
+            install_package = (f'adb shell su -c "pm install '
+                               f'/data/local/tmp/{apk}"')
+        else:
+            install_package = (f'adb shell "su 0 pm install '
+                               f'/data/local/tmp/{apk}"')
+
+        logger.info('Installing the APK: %s', install_package)
+        installation = os.popen(install_package).read()
+        logger.debug(installation)
+        if 'Success' in installation:
             logger.info('The apk is installed: %s', path_to_apk)
         else:
             logger.error('APK installation error!: %s', path_to_apk)
@@ -919,13 +966,14 @@ def main(path_to_apk, device_ip, su_pass, output, activity_time,
 
     check_command_line(path_to_apk, output)
     start_jadx(path_to_apk, tempdir)
-    check_device()
+    device_data = check_device()
     badging = get_badging(path_to_apk)
-    install_apk(badging['package'], path_to_apk)
+    install_apk(badging['package'], path_to_apk, device_data['magisk'])
     report_data = perform_static_analysis(badging, tempdir)
     report_data = perform_dynamic_analysis(report_data, badging['package'],
                                            activity_time, device_ip,
-                                           su_pass, tempdir)
+                                           su_pass, tempdir,
+                                           device_data['magisk'])
     remove_apk(badging['package'])
     make_report(output, report_data)
 
