@@ -87,7 +87,7 @@ def start_jadx(path_to_apk, tempdir):
 
     jadx_dir = f'{tempdir}/resources'
     if not os.path.exists(jadx_dir):
-        jadx = f'jadx {path_to_apk} -d {tempdir}'
+        jadx = f'./jadx/bin/jadx {path_to_apk} -d {tempdir}'
         logger.info('Starting Jadx: %s', jadx)
         try:
             jadx_output = os.popen(jadx).read()
@@ -107,7 +107,7 @@ def check_device():
       Nothing.
 
     Returns:
-      Nothing.
+      Dict with magisk status.
 
     Raises:
       SystemExit: If the device is not connected.
@@ -123,6 +123,8 @@ def check_device():
         raise SystemExit(1)
 
     logger.debug('Exiting the function: "check_device"')
+
+    return{'magisk': is_magisk()}
 
 
 def get_badging(path_to_apk):
@@ -195,6 +197,52 @@ def get_badging(path_to_apk):
            'version_code': version_code}
 
 
+def get_geo():
+    """Get location.
+
+    Args:
+      Nothing.
+
+    Returns:
+      geo_data: Dictionary with geo data.
+
+    Raises:
+      Nothing.
+    """
+
+    logger.debug('Entering the function: "get_geo"')
+
+    geo_data = {}
+    cmd1 = 'adb shell dumpsys location'
+    cmd2 = 'grep -o -m1 \'Location\\[network [0-9]*,[0-9]*\' | head -1'
+    cmd3 = 'sed \'s/Location\\[network //\''
+    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
+    lat_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    lat = os.popen(lat_cmd).read()
+    logger.debug(lat)
+    if len(lat):
+        geo_data['lat'] = lat
+    else:
+        geo_data['lat'] = ''
+        logger.error('Error getting lat.')
+
+    cmd1 = 'adb shell dumpsys location'
+    cmd2 = 'grep -o -m1 \'Location\\[network [0-9,]*\' | head -1'
+    cmd3 = 'sed \'s/Location\\[network [0-9]*,[0-9]*,//\''
+    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
+    lon_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
+    lon = os.popen(lon_cmd).read()
+    logger.debug(lon)
+    if len(lon):
+        geo_data['lon'] = lon
+    else:
+        geo_data['lon'] = ''
+        logger.error('Error getting lon.')
+
+    logger.debug('Exiting the function: "get_geo"')
+    return geo_data
+
+
 def perform_static_analysis(badging, tempdir):
     """Main SAST function.
 
@@ -222,8 +270,8 @@ def perform_static_analysis(badging, tempdir):
     data['version'] = badging['version']
     data['version_code'] = badging['version_code']
 
-    cmd1 = f'keytool -printcert -file {tempdir}/resources/META-INF/*.RSA'
-    cmd2 = 'grep -Po "(?<=SHA256:) .*"'
+    cmd1 = f'keytool -printcert -file {tempdir}/resources/META-INF/*.*SA'
+    cmd2 = 'grep -Po "(SHA1|SHA256:) .*" -m 1'
     cmd3 = 'xxd -r -p | openssl base64'
     cmd4 = 'tr -- \'+/=\' \'-_\' | tr -d \'\\n\''
     checksum_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
@@ -308,36 +356,6 @@ def perform_static_analysis(badging, tempdir):
     else:
         device['wifi_ssid'] = ''
         logger.error('Error getting wifi_ssid.')
-
-    geo_data = {}
-
-    cmd1 = 'adb shell dumpsys location'
-    cmd2 = 'grep -o -m1 \'gps: Location\\[gps [0-9]*,[0-9]*\''
-    cmd3 = 'sed \'s/gps: Location\\[gps //\''
-    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
-    lat_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
-    lat = os.popen(lat_cmd).read()
-    logger.debug(lat)
-    if len(lat):
-        geo_data['lat'] = lat
-    else:
-        geo_data['lat'] = ''
-        logger.error('Error getting lat.')
-
-    cmd1 = 'adb shell dumpsys location'
-    cmd2 = 'grep -o -m1 \'gps: Location\\[gps [0-9,]*\''
-    cmd3 = 'sed \'s/gps: Location\\[gps [0-9]*,[0-9]*,//\''
-    cmd4 = 'tr -d \' \\t\\n\\r\\f\''
-    lon_cmd = f'{cmd1} | {cmd2} | {cmd3} | {cmd4}'
-    lon = os.popen(lon_cmd).read()
-    logger.debug(lon)
-    if len(lon):
-        geo_data['lon'] = lon
-    else:
-        geo_data['lon'] = ''
-        logger.error('Error getting lon.')
-
-    device['geo'] = geo_data
 
     data['analysis'].append({
         'device': device
@@ -498,32 +516,39 @@ def set_iptables(uid, magisk, device_ip, su_pass):
         raise SystemExit(1)
 
     # Setup host
-    ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
-    ret_ipt1 = os.popen(ipt1_host).read()
-    logger.debug(ret_ipt1)
-    ipt2_host = (f'echo {su_pass} | sudo -S sysctl -w '
-                 'net.ipv4.ip_forward=1')
-    ret_ipt2 = os.popen(ipt2_host).read()
-    logger.debug(ret_ipt2)
-    ipt3_host = (f'echo {su_pass} | sudo -S sysctl -w '
-                 'net.ipv6.conf.all.forwarding=1')
-    ret_ipt3 = os.popen(ipt3_host).read()
-    logger.debug(ret_ipt3)
-    ipt4_host = (f'echo {su_pass} | sudo -S sysctl -w '
-                 'net.ipv4.conf.all.send_redirects=0')
-    ret_ipt4 = os.popen(ipt4_host).read()
-    logger.debug(ret_ipt4)
+    if sys.platform == 'linux' or sys.platform == 'linux2':
+        ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
+        ret_ipt1 = os.popen(ipt1_host).read()
+        logger.debug(ret_ipt1)
+        ipt2_host = (f'echo {su_pass} | sudo -S sysctl -w '
+                     'net.ipv4.ip_forward=1')
+        ret_ipt2 = os.popen(ipt2_host).read()
+        logger.debug(ret_ipt2)
+        ipt3_host = (f'echo {su_pass} | sudo -S sysctl -w '
+                     'net.ipv6.conf.all.forwarding=1')
+        ret_ipt3 = os.popen(ipt3_host).read()
+        logger.debug(ret_ipt3)
+        ipt4_host = (f'echo {su_pass} | sudo -S sysctl -w '
+                     'net.ipv4.conf.all.send_redirects=0')
+        ret_ipt4 = os.popen(ipt4_host).read()
+        logger.debug(ret_ipt4)
 
-    ipt5_host = (f'echo {su_pass} | '
-                 f'sudo -S iptables -t nat -A PREROUTING -s {device_ip} '
-                 '-p tcp -j REDIRECT --to-port 8080')
-    ret_ipt5 = os.popen(ipt5_host).read()
-    logger.debug(ret_ipt5)
+        ipt5_host = (f'echo {su_pass} | '
+                     f'sudo -S iptables -t nat -A PREROUTING -s {device_ip} '
+                     '-p tcp -j REDIRECT --to-port 8080')
+        ret_ipt5 = os.popen(ipt5_host).read()
+        logger.debug(ret_ipt5)
 
-    if ret_ipt1 or ret_ipt5:
-        error_str = f'Host setup error! {ret_ipt1} {ret_ipt5}'
-        logger.error(error_str)
-        raise SystemExit(1)
+        if ret_ipt1 or ret_ipt5:
+            error_str = f'Host setup error! {ret_ipt1} {ret_ipt5}'
+            logger.error(error_str)
+            raise SystemExit(1)
+
+    elif sys.platform == 'darwin':
+        ipt1_host_mac = (f'echo {su_pass} | sudo -S sysctl -w '
+                         'net.inet.ip.forwarding=1')
+        ret_ipt1_host_mac = os.popen(ipt1_host_mac).read()
+        logger.debug(ret_ipt1_host_mac)
 
     logger.debug('Exiting the function: "set_iptables"')
 
@@ -561,12 +586,14 @@ def unset_iptables(su_pass, magisk):
         logger.error(err)
         raise SystemExit(1)
 
-    ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
-    ret_nat = os.popen(ipt1_host).read()
-    logger.debug(ret_nat)
-    if ret_nat:
-        logger.error('Host iptables unset error! %ret_nat !', ret_nat)
-        raise SystemExit(1)
+    if sys.platform == 'linux' or sys.platform == 'linux2':
+        ipt1_host = f'echo {su_pass} | sudo -S iptables -t nat -F'
+        ret_nat = os.popen(ipt1_host).read()
+        logger.debug(ret_nat)
+        if ret_nat:
+            logger.error('Host iptables unset error! %ret_nat !', ret_nat)
+            raise SystemExit(1)
+    # elif sys.platform == 'darwin':
 
     logger.debug('Exiting the function: "unset_iptables"')
 
@@ -609,6 +636,7 @@ def start_mitm(tempdir):
     retcode = process.returncode
     if bool(retcode):
         logger.error('Mitmdump startup error: %err !', retcode)
+        stop_mitm()
         raise SystemExit(1)
 
     logger.debug('Exiting the function: "start_mitm"')
@@ -616,11 +644,11 @@ def start_mitm(tempdir):
     return process
 
 
-def stop_mitm(mitm_process):
+def stop_mitm():
     """Stopping mitmdump.
 
     Args:
-      mitm_process: The mitmdump handler.
+      Nothing.
 
     Returns:
       Nothing.
@@ -631,13 +659,17 @@ def stop_mitm(mitm_process):
 
     logger.debug('Entering the function: "stop_mitm"')
 
-    os.system(f'pkill -TERM -P {mitm_process.pid}')
+    # os.system(f'pkill -TERM -P {mitm_process.pid}')
+    if sys.platform == 'linux' or sys.platform == 'linux2':
+        os.system('pkill -TERM mitmdump')
+    elif sys.platform == 'darwin':
+        os.system('pkill -f mitmdump')
 
     logger.debug('Exiting the function: "stop_mitm"')
 
 
 def perform_dynamic_analysis(data, package, activity_time, device_ip,
-                             su_pass, tempdir):
+                             su_pass, tempdir, magisk):
     """Main DAST function.
 
     Args:
@@ -654,20 +686,29 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     logger.debug('Entering the function: "perform_dynamic_analysis"')
 
     uid = get_uid(package)
-    magisk = is_magisk()
 
     set_iptables(uid, magisk, device_ip, su_pass)
-    mitm_process = start_mitm(tempdir)
+    start_mitm(tempdir)
     runtime_data = start_application(package)
     activity(runtime_data['start_timestamp'], activity_time)
+    geo = get_geo()
     stop_application(package, runtime_data['pid'])
-    stop_mitm(mitm_process)
+    stop_mitm()
     unset_iptables(su_pass, magisk)
 
     # Preparing a data set.
+    data['analysis'][0]['device']['geo'] = geo
     dynamic_analysis = {}
-    with open(f'{tempdir}/dump.har') as har:
-        network_activity = json.load(har)
+
+    network_activity = []
+    try:
+        with open(f'{tempdir}/dump.har') as har:
+            network_activity = json.load(har)
+    except IOError as error_rep:
+        logger.error(f'Error reading har.dump {error_rep}')
+    finally:
+        stop_mitm()
+
     requested_permissions = []
     dynamic_analysis['network_activity'] = network_activity
     dynamic_analysis['requested_permissions'] = requested_permissions
@@ -680,7 +721,7 @@ def perform_dynamic_analysis(data, package, activity_time, device_ip,
     return data
 
 
-def install_apk(package, path_to_apk):
+def install_apk(package, path_to_apk, magisk):
     """Installing the apk on a device or emulator.
 
     Args:
@@ -690,6 +731,7 @@ def install_apk(package, path_to_apk):
       Nothing.
 
     Raises:
+      SystemExit: If APK pushing to device/emulator error.
       SystemExit: If APK installation error.
     """
 
@@ -701,11 +743,43 @@ def install_apk(package, path_to_apk):
     logger.debug(package_presents)
     if not package_presents:
         logger.info('The package %s is not installed.', package)
-        install_package = f'adb install {path_to_apk}'
-        logger.info('Installing the APK: %s', path_to_apk)
-        installaation = os.popen(install_package).read()
-        logger.debug(installaation)
-        if 'Success' in installaation:
+
+        # Set SELinux to Permissive mode
+        if magisk:
+            set_selinux_cmd = 'adb shell su -c "setenforce 0"'
+        else:
+            set_selinux_cmd = 'adb shell "su 0 setenforce 0"'
+        logger.info('Setting SELinux to Permissive mode: %s', set_selinux_cmd)
+        set_selinux = os.popen(set_selinux_cmd).read()
+        logger.debug(set_selinux_cmd)
+        if set_selinux:
+            logger.error('Error with set SELinux!: %s', set_selinux)
+            raise SystemExit(1)
+
+        # Pushing APK for a silent install
+        push_apk_cmd = f'adb push {path_to_apk} /data/local/tmp'
+        logger.info('Pushing the APK: %s', push_apk_cmd)
+        push_apk = os.popen(push_apk_cmd).read()
+        logger.debug(push_apk)
+        if 'file pushed' in push_apk:
+            logger.info('The apk is pushed to device/emulator: %s', push_apk)
+        else:
+            logger.error('Error with pushing!: %s', push_apk)
+            raise SystemExit(1)
+
+        # install_package = f'adb install {path_to_apk}'
+        apk = os.path.basename(path_to_apk)
+        if magisk:
+            install_package = (f'adb shell su -c "pm install '
+                               f'/data/local/tmp/{apk}"')
+        else:
+            install_package = (f'adb shell "su 0 pm install '
+                               f'/data/local/tmp/{apk}"')
+
+        logger.info('Installing the APK: %s', install_package)
+        installation = os.popen(install_package).read()
+        logger.debug(installation)
+        if 'Success' in installation:
             logger.info('The apk is installed: %s', path_to_apk)
         else:
             logger.error('APK installation error!: %s', path_to_apk)
@@ -759,6 +833,7 @@ def start_application(package):
         logger.info('The app is running: %s', package)
     else:
         logger.error('Runtime error!: %s', package)
+        stop_mitm()
         raise SystemExit(1)
 
     now = datetime.now()
@@ -826,7 +901,8 @@ def stop_application(package, pid):
         logger.info('The application is stopped: %s', package)
     else:
         logger.error('Error stopping the application!: %s', package)
-        # raise SystemExit(1)
+        stop_mitm()
+        raise SystemExit(1)
 
     logger.debug('Exiting the function: "stop_app"')
 
@@ -890,13 +966,14 @@ def main(path_to_apk, device_ip, su_pass, output, activity_time,
 
     check_command_line(path_to_apk, output)
     start_jadx(path_to_apk, tempdir)
-    check_device()
+    device_data = check_device()
     badging = get_badging(path_to_apk)
-    install_apk(badging['package'], path_to_apk)
+    install_apk(badging['package'], path_to_apk, device_data['magisk'])
     report_data = perform_static_analysis(badging, tempdir)
     report_data = perform_dynamic_analysis(report_data, badging['package'],
                                            activity_time, device_ip,
-                                           su_pass, tempdir)
+                                           su_pass, tempdir,
+                                           device_data['magisk'])
     remove_apk(badging['package'])
     make_report(output, report_data)
 

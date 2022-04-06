@@ -54,6 +54,7 @@
 
 * [Getting Started](#getting-started)
 	* [Prerequisites for Linux](#prerequisites)
+	* [Prerequisites for MAC](#mac_prerequisites)
 	* [Preparing a device](#preparing-device)
 	* [Preparing an emulator](#preparing-emulator)	
 	* [Usage](#usage)
@@ -64,12 +65,13 @@
 
 ```
 git clone https://github.com/vmprog/exynex.git
+cd exynex
 ```
 
 The use of the utility is possible in two ways:
 
-1. Install all dependencies on local Linux host machine.
-2. Using docker image.
+1. Install all dependencies on local Linux/macOS host machine.
+2. Using docker image for (Linux, macOS).
 
 Target device:
 
@@ -117,6 +119,66 @@ Install local python dependencies by running:
 ```
 pip install -r requirements.txt
 ```
+Set permission for jadx by running:
+```
+chmod 755 ./jadx/bin/jadx
+```
+
+<a id="mac_prerequisites"></a>
+## Prerequisites for macOS
+
+- [Android Studio/Android Sdk](https://developer.android.com/studio#downloads) is installed
+
+<p align="center">
+<a target="_blank" href="LICENSE"><img src="https://github.com/vmprog/exynex/blob/exynex_dev/badges/sdk_set.jpg"></a>
+</p>
+
+* Emulator and adb executables from Android Sdk have been added to $PATH variable
+
+   	* emulator usually located at `/Users/<your_user_name>/Library/Android/sdk/emulator/emulator`
+   	* adb usually located at `/Users/<your_user_name>/Library/Android/sdk/platform-tools/adb` 
+	
+       * You need to add these lines to ~/.zprofile
+        
+```
+export PATH=$PATH:$HOME/Library/Android/sdk/platform-tools
+export PATH=$PATH:$HOME/Library/Android/sdk/emulator
+export PATH=$PATH:$HOME/Library/Android/sdk//build-tools/30.0.3
+export JAVA_HOME=/Applications/Android\ Studio.app/Contents/jre/Contents/Home/
+```
+
+#### If Mac environment (Install these packages):
+
+- [python v3.8.8 or later](https://www.python.org/)
+- [mitmproxy](https://mitmproxy.org/)
+
+Install local python dependencies by running:
+```
+pip install -r requirements.txt
+```
+Setup network config for transparent proxy:
+
+- Enable IP forwarding.
+```
+sudo sysctl -w net.inet.ip.forwarding=1
+```
+- Place the following line in a file called, say, pf.conf.
+```
+rdr pass on en0 inet proto tcp to any port {80, 443} -> 127.0.0.1 port 8080
+```
+- Configure pf with the rules.
+```
+sudo pfctl -f pf.conf
+```
+- And now enable it.
+```
+sudo pfctl -e
+```
+- Configure sudoers to allow mitmproxy to access pfctl.
+Edit the file /etc/sudoers on your system as root. Add the following line to the end of the file:
+```
+ALL ALL=NOPASSWD: /sbin/pfctl -s state
+```
 
 #### If Docker environment:
 
@@ -162,11 +224,17 @@ mount -o ro,remount /
 
 Before using, you must change the ip address of the gateway to host ip with mitmdump.
 
-Before using, you must disable IPv6 protocol.
+Before using, you must disable IPv6 protocol on device/emulator.
+```
+adb shell
+su
+echo 0 > /proc/sys/net/ipv6/conf/wlan0/accept_ra
+echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6
+```
+
 If you are using mobile internet, you should find the following setting: Access Point Names
 ->APN protocol and set IPv4 only.
 
-If you are using WIFI, you should find the protocol selection setting in the settings menu of your access point and set IPv4 only.
 
 <a id="preparing-emulator"></a>
 ## Preparing an emulator
